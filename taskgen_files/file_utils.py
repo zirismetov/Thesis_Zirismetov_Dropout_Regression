@@ -4,7 +4,7 @@ import time
 import platform
 from shutil import copyfile
 
-from taskgen_files import dict_to_obj as do
+import dict_to_obj as do
 # from dict_to_obj import DictToObj
 
 PLATFORM_WINDOWS = 'Windows'

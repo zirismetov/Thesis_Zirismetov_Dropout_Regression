@@ -1,4 +1,4 @@
-from taskgen_files import dict_to_obj as do
+import dict_to_obj as do
 
 
 # class DictToObj:

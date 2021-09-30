@@ -1,14 +1,20 @@
+import logging
+
 import numpy as np, pandas as pd
+import sys
 import sklearn.metrics
-import torch
 import torch.utils.data
 from sklearn.model_selection import train_test_split
 import argparse
 import time
-import logging
+from Simple_Dropout_module import SimpleDropout
 from datetime import datetime
-# from tqdm import tqdm
-from taskgen_files import csv_utils_2, args_utils, file_utils
+from tqdm import tqdm
+
+sys.path.append('/Users/zafarzhonirismetov/PycharmProjects/Thesis_Dropout_Regression/taskgen_files')
+import csv_utils_2
+import file_utils
+import args_utils
 
 parser = argparse.ArgumentParser(description="Weather hypermarkets")
 parser.add_argument('-sequence_name',
@@ -17,9 +23,9 @@ parser.add_argument('-sequence_name',
 parser.add_argument('-run_name',
                     type=str,
                     default=str(time.time()))
-parser.add_argument('-lr',
-                    type=float,
-                    default=0.01)
+# # parser.add_argument('-lr',
+# #                     type=float,
+# #                     default=0.01)
 parser.add_argument('-batch_size',
                     type=int,
                     default=64)
@@ -29,22 +35,19 @@ parser.add_argument('-test_size',
 parser.add_argument('-epoch',
                     type=int,
                     default=5)
-parser.add_argument('-dropout_mode',
-                    default='False',
+
+parser.add_argument('-drop_p',
+                    default='0, 0.5, 0.5',
                     type=str)
-parser.add_argument('-layer_count',
-                    default=3,
-                    type=int)
-parser.add_argument('-layer_size',
+
+parser.add_argument('-layers_size',
                     type=str,
                     default='1,32,64,32,1')
-# parser.add_argument('-dropout_every',
-#                             default=False,
-#                             type=lambda x: (str(x).lower() == 'true'))
 
 parser.add_argument('-is_debug',
-                    default=False,
+                    default=True,
                     type=lambda x: (str(x).lower() == 'true'))
+
 parser.add_argument('-data_file_path',
                     type=str,
                     default='/Users/zafarzhonirismetov/Desktop/Work/CalCOFI/bottle.csv')
@@ -62,11 +65,24 @@ data_raw['Salnty'].replace(0, np.nan, inplace=True)
 data_raw['T_degC'].replace(0, np.nan, inplace=True)
 data_raw.fillna(method='pad', inplace=True)
 
-removebrac = "[]"
-args.layer_size = ''.join(args.layer_size)
-for char in removebrac:
-    args.layer_size = args.layer_size.replace(char, "")
-args.layer_size = args.layer_size.split(',')
+args.layers_size = ''.join(args.layers_size)
+args.drop_p = ''.join(args.drop_p)
+
+removebrac = "[]''"
+for key in args.__dict__:
+    if isinstance(args.__dict__[key], str) :
+        value = (args.__dict__[key])
+        for char in removebrac:
+            value = value.replace(char, "")
+        args.__dict__.update({key: value})
+    elif isinstance(args.__dict__[key], list):
+        value = str(args.__dict__[key])
+        for char in removebrac:
+            value = value.replace(char, "")
+        args.__dict__.update({key: value})
+
+args.layers_size = args.layers_size.split(',')
+args.drop_p = args.drop_p.split(',')
 
 
 class DatasetLoadColCOFI(torch.utils.data.Dataset):
@@ -97,55 +113,37 @@ tr_idx = np.arange(len(dataset))
 
 subset_train_data, subset_test_data = train_test_split(
     tr_idx,
-    test_size=args.test_size,
+    test_size=float(args.test_size),
     random_state=0)
 
 dataset_train = torch.utils.data.Subset(dataset, subset_train_data)
 dataset_test = torch.utils.data.Subset(dataset, subset_test_data)
 
 dataloader_train = torch.utils.data.DataLoader(dataset_train,
-                                               batch_size=args.batch_size,
+                                               batch_size=int(args.batch_size),
                                                shuffle=True)
 
 dataloader_test = torch.utils.data.DataLoader(dataset_test,
-                                              batch_size=args.batch_size,
+                                              batch_size=int(args.batch_size),
                                               shuffle=False)
 
 
 class Model(torch.nn.Module):
-    def __init__(self, dropout_mode):
-        super(Model, self).__init__()
+    def __init__(self, d_prob=[0, 0.5, 0.5], layer_size=[1, 32, 32, 32, 1]):
+        super().__init__()
 
-        if dropout_mode == 'true_every' or dropout_mode == 'true_last':
-            prob = 0.5
-        else:
-            prob = 0
         self.layers = torch.nn.Sequential()
-        for l in range(args.layer_count):
-            self.layers.add_module(f'linear_{l + 1}',
-                                   torch.nn.Linear(int(args.layer_size[l]), int(args.layer_size[l + 1])))
-            if dropout_mode == 'true_every':
-                self.layers.add_module(f'Dropout{l + 1}',
-                                       torch.nn.Dropout(p=prob))
-            if l != args.layer_count:
-                self.layers.add_module(f'ReLU{l + 1}',
-                                       torch.nn.LeakyReLU())
-        if dropout_mode == 'true_last':
-            self.layers.add_module('Dropout_last',
-                                   torch.nn.Dropout(p=prob))
-        self.layers.add_module('linear_last',
-                               torch.nn.Linear(int(args.layer_size[-2]), int(args.layer_size[-1])))
-        # self.layers = torch.nn.Sequential(
-        #     torch.nn.Linear(in_features=1, out_features=128),
-        #     torch.nn.LeakyReLU(),
-        #     torch.nn.Dropout(p=prob),
-        #     torch.nn.Linear(in_features=128, out_features=128),
-        #     torch.nn.LeakyReLU(),
-        #     torch.nn.Dropout(p=prob),
-        #     torch.nn.Linear(in_features=128, out_features=64),
-        #     torch.nn.LeakyReLU(),
-        #     torch.nn.Linear(in_features=64, out_features=1),
-        # )
+        for l in range(len(layer_size) - 2):
+            self.layers.add_module(f'SimpleDropout_layer_{l + 1}',
+                                   SimpleDropout(float(d_prob[l])))
+
+            self.layers.add_module(f'linear_layer_{l + 1}',
+                                   torch.nn.Linear(int(layer_size[l]), int(layer_size[l + 1])))
+            self.layers.add_module(f'LeakyReLU_layer_{l + 1}',
+                                   torch.nn.LeakyReLU())
+
+        self.layers.add_module("last_linear_layer",
+                               torch.nn.Linear(int(layer_size[-2]), int(layer_size[-1])))
 
     def forward(self, x):
         y_prim = self.layers.forward(x)
@@ -160,24 +158,28 @@ file_utils.FileUtils.writeJSON(f'{path_run}/args.json', args.__dict__)
 csv_utils_2.CsvUtils2.create_global(path_sequence)
 csv_utils_2.CsvUtils2.create_local(path_sequence, args.run_name)
 
-model = Model(dropout_mode=args.dropout_mode)
+model = Model(d_prob=args.drop_p,
+              layer_size=args.layers_size)
+
 opt = torch.optim.Adam(
     model.parameters(),
-    lr=args.lr
+    lr=float(args.lr)
 )
 
+best_loss_test = []
+best_R2_test = []
 losses_train = []
 losses_test = []
 R2_train = []
 R2_test = []
-metrics_mean_dict = {'loss_train': 0,
-                     'R^2_train': 0,
-                     'loss_test': 1,
+metrics_mean_dict = {'loss_train': None,
+                     'R^2_train': None,
+                     'loss_test': 0,
                      'R^2_test': 0,
-                     'best_loss_test': 1,
+                     'best_loss_test': 0,
                      'best_R^2_test': 0
                      }
-for epoch in range(args.epoch):
+for epoch in range(int(args.epoch)):
 
     for dataloader in [dataloader_train, dataloader_test]:
         losses = []
@@ -192,7 +194,7 @@ for epoch in range(args.epoch):
         metrics_mean_dict[f'loss_{mode}'] = []
         metrics_mean_dict[f'R^2_{mode}'] = []
 
-        for x, y in dataloader:
+        for x, y in tqdm(dataloader, desc=mode):
 
             y_prim = model.forward(torch.FloatTensor(x.float()))
             y = torch.FloatTensor(y.float())
@@ -204,7 +206,7 @@ for epoch in range(args.epoch):
             metrics_mean_dict[f'R^2_{mode}'].append(R2)
 
             losses.append(loss.item())
-            R2_s.append(R2.item())
+            # R2_s.append(R2.item())
 
             if dataloader is dataloader_train:
                 loss.backward()
@@ -216,11 +218,11 @@ for epoch in range(args.epoch):
         metrics_mean_dict[f'R^2_{mode}'] = round((torch.mean(torch.FloatTensor(metrics_mean_dict[f'R^2_{mode}'])))
                                                  .numpy().item(), 4)
 
-        if metrics_mean_dict['loss_test'] < metrics_mean_dict['best_loss_test']:
-            metrics_mean_dict['best_loss_test'] = metrics_mean_dict['loss_test']
-
-        if metrics_mean_dict['R^2_test'] > metrics_mean_dict['best_R^2_test']:
-            metrics_mean_dict['best_R^2_test'] = metrics_mean_dict['R^2_test']
+        if dataloader is dataloader_test:
+            best_loss_test.append(metrics_mean_dict['loss_test'])
+            best_R2_test.append(metrics_mean_dict['R^2_test'])
+            metrics_mean_dict['best_loss_test'] = min(best_loss_test)
+            metrics_mean_dict['best_R^2_test'] = max(best_R2_test)
 
         csv_utils_2.CsvUtils2.add_hparams(
             path_sequence,
@@ -229,11 +231,9 @@ for epoch in range(args.epoch):
             metrics_mean_dict,
             epoch
         )
-
         if dataloader is dataloader_train:
             losses_train.append(np.mean(losses))
             R2_train.append(np.mean(R2_s))
-
         else:
             losses_test.append(np.mean(losses))
             R2_test.append(np.mean(R2_s))

@@ -1,12 +1,9 @@
 import copy
 import os
-import time
 import logging
-import sys
-import traceback
-import traceback, sys
 import numpy as np
-from taskgen_files import file_utils as fu
+import sys
+import file_utils
 
 
 class CsvUtils2():
@@ -46,7 +43,7 @@ class CsvUtils2():
 
                 if os.path.exists(path_csv):
                     with open(path_csv, 'r+') as outfile:
-                        fu.FileUtils.lock_file(outfile)
+                        file_utils.FileUtils.lock_file(outfile)
                         lines_all = outfile.readlines()
                         lines_all = [it.replace('\n', '').split(',') for it in lines_all if ',' in it]
                         if len(lines_all) == 0 or len(lines_all[0]) < 2:
@@ -104,7 +101,7 @@ class CsvUtils2():
                         outfile.write('\n'.join(rows).strip())
                         outfile.flush()
                         os.fsync(outfile)
-                        fu.FileUtils.unlock_file(outfile)
+                        file_utils.FileUtils.unlock_file(outfile)
 
         except Exception as e:
             logging.exception(e)
