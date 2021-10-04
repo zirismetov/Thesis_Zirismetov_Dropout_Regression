@@ -7,7 +7,7 @@ import torch.utils.data
 from sklearn.model_selection import train_test_split
 import argparse
 import time
-from Simple_Dropout_module import SimpleDropout
+from GaussianDroput_module import GaussianDropout
 from datetime import datetime
 from tqdm import tqdm
 
@@ -135,7 +135,7 @@ class Model(torch.nn.Module):
         self.layers = torch.nn.Sequential()
         for l in range(len(layer_size) - 2):
             self.layers.add_module(f'SimpleDropout_layer_{l + 1}',
-                                   SimpleDropout(float(d_prob[l])))
+                                   GaussianDropout(float(d_prob[l])))
             self.layers.add_module(f'linear_layer_{l + 1}',
                                    torch.nn.Linear(int(layer_size[l]), int(layer_size[l + 1])))
             self.layers.add_module(f'LeakyReLU_layer_{l + 1}',

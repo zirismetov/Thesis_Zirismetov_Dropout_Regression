@@ -1,13 +1,16 @@
 import logging
-import matplotlib.pyplot as plt
+import random
+
+import matplotlib.pylab as plt
 import numpy as np, pandas as pd
 import sys
+import os
 import sklearn.metrics
 import torch.utils.data
 from sklearn.model_selection import train_test_split
 import argparse
 import time
-from Simple_Dropout_module import SimpleDropout
+from AdvancedDropout_module import AdvancedDropout
 from datetime import datetime
 from tqdm import tqdm
 
@@ -34,15 +37,11 @@ parser.add_argument('-test_size',
                     default=0.20)
 parser.add_argument('-epoch',
                     type=int,
-                    default=10)
-
-parser.add_argument('-drop_p',
-                    default='0, 0.5, 0.5',
-                    type=str)
+                    default=5)
 
 parser.add_argument('-layers_size',
                     type=str,
-                    default='1,32,64,32,1')
+                    default='1,64,64,64,1')
 
 parser.add_argument('-is_debug',
                     default=False,
@@ -66,7 +65,7 @@ data_raw['T_degC'].replace(0, np.nan, inplace=True)
 data_raw.fillna(method='pad', inplace=True)
 
 args.layers_size = ''.join(args.layers_size)
-args.drop_p = ''.join(args.drop_p)
+
 
 removebrac = "[]''"
 for key in args.__dict__:
@@ -82,7 +81,7 @@ for key in args.__dict__:
         args.__dict__.update({key: value})
 
 args.layers_size = args.layers_size.split(',')
-args.drop_p = args.drop_p.split(',')
+
 
 
 class DatasetLoadColCOFI(torch.utils.data.Dataset):
@@ -108,9 +107,7 @@ class DatasetLoadColCOFI(torch.utils.data.Dataset):
 
 
 dataset = DatasetLoadColCOFI()
-
 tr_idx = np.arange(len(dataset))
-
 subset_train_data, subset_test_data = train_test_split(
     tr_idx,
     test_size=float(args.test_size),
@@ -121,7 +118,7 @@ dataset_test = torch.utils.data.Subset(dataset, subset_test_data)
 
 dataloader_train = torch.utils.data.DataLoader(dataset_train,
                                                batch_size=int(args.batch_size),
-                                               shuffle=False)
+                                               shuffle=True)
 
 dataloader_test = torch.utils.data.DataLoader(dataset_test,
                                               batch_size=int(args.batch_size),
@@ -129,17 +126,18 @@ dataloader_test = torch.utils.data.DataLoader(dataset_test,
 
 
 class Model(torch.nn.Module):
-    def __init__(self, d_prob=[0, 0.5, 0.5], layer_size=[1, 32, 32, 32, 1]):
+    def __init__(self, layer_size=[1, 32, 32, 32, 1]):
         super().__init__()
 
         self.layers = torch.nn.Sequential()
         for l in range(len(layer_size) - 2):
-            self.layers.add_module(f'SimpleDropout_layer_{l + 1}',
-                                   SimpleDropout(float(d_prob[l])))
+
             self.layers.add_module(f'linear_layer_{l + 1}',
                                    torch.nn.Linear(int(layer_size[l]), int(layer_size[l + 1])))
             self.layers.add_module(f'LeakyReLU_layer_{l + 1}',
                                    torch.nn.LeakyReLU())
+            self.layers.add_module(f'AdvanceDropout_layer_{l + 1}',
+                                   AdvancedDropout(int(layer_size[l+1])))
 
         self.layers.add_module("last_linear_layer",
                                torch.nn.Linear(int(layer_size[-2]), int(layer_size[-1])))
@@ -157,13 +155,26 @@ file_utils.FileUtils.writeJSON(f'{path_run}/args.json', args.__dict__)
 csv_utils_2.CsvUtils2.create_global(path_sequence)
 csv_utils_2.CsvUtils2.create_local(path_sequence, args.run_name)
 
-model = Model(d_prob=args.drop_p,
-              layer_size=args.layers_size)
+model = Model(layer_size=args.layers_size)
 
-opt = torch.optim.Adam(
-    model.parameters(),
-    lr=float(args.lr)
-)
+dp_params = []
+res_params = []
+for m in model.layers:
+    if isinstance(m, AdvancedDropout):
+        dp_params.append(m.weight_h)
+        dp_params.append(m.bias_h)
+        dp_params.append(m.weight_mu)
+        dp_params.append(m.bias_mu)
+        dp_params.append(m.weight_sigma)
+        dp_params.append(m.bias_sigma)
+    elif isinstance(m, torch.nn.Linear):
+        res_params.append(m.weight)
+        if hasattr(m,"bias"):
+            res_params.append(m.bias)
+#
+opt = torch.optim.SGD([{'params':res_params,'lr':float(args.lr)},
+                       {'params':dp_params,'lr':1e-4}], momentum=0.9, weight_decay=5e-4)
+
 
 best_loss_test = []
 best_R2_test = []
@@ -237,6 +248,19 @@ for epoch in range(int(args.epoch)):
             losses_test.append(np.mean(losses))
             R2_test.append(np.mean(R2_s))
 
+name = ""
+for string in args.run_name:
+    string = string.replace("-", "")
+    name += string
+last = name[-6:]
+script_dir = os.path.dirname(__file__)
+results_dir = os.path.join(script_dir, 'Results_img/')
+sample_file_name = f"sample"
+
+if not os.path.isdir(results_dir):
+    os.makedirs(results_dir)
+
+
 plt.subplot(2, 1, 1)
 plt.title('loss')
 plt.plot(losses_train, label="loss_trian")
@@ -248,4 +272,4 @@ plt.title('R2')
 plt.plot(R2_train, label="R2_trian")
 plt.plot(R2_test, label="R2_test")
 plt.legend(loc='lower right', shadow=False, fontsize='medium')
-plt.show()
+plt.savefig(results_dir + last + sample_file_name)
