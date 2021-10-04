@@ -1,14 +1,16 @@
 import logging
-import matplotlib.pyplot as plt
+
 import numpy as np, pandas as pd
 import sys
 import sklearn.metrics
 import torch.utils.data
+
 from sklearn.model_selection import train_test_split
 import argparse
 import time
-from Simple_Dropout_module import SimpleDropout
+from Drop_Connect_module import WeightDropLinear
 from datetime import datetime
+
 from tqdm import tqdm
 
 sys.path.append('/Users/zafarzhonirismetov/PycharmProjects/Thesis_Dropout_Regression/taskgen_files')
@@ -16,7 +18,8 @@ import csv_utils_2
 import file_utils
 import args_utils
 
-parser = argparse.ArgumentParser(description="Weather hypermarkets")
+
+parser = argparse.ArgumentParser(description="Oceanic hypermarkets")
 parser.add_argument('-sequence_name',
                     type=str,
                     default='sequence')
@@ -34,7 +37,7 @@ parser.add_argument('-test_size',
                     default=0.20)
 parser.add_argument('-epoch',
                     type=int,
-                    default=10)
+                    default=5)
 
 parser.add_argument('-drop_p',
                     default='0, 0.5, 0.5',
@@ -42,7 +45,7 @@ parser.add_argument('-drop_p',
 
 parser.add_argument('-layers_size',
                     type=str,
-                    default='1,32,64,32,1')
+                    default='1,64,64,64,1')
 
 parser.add_argument('-is_debug',
                     default=False,
@@ -121,7 +124,7 @@ dataset_test = torch.utils.data.Subset(dataset, subset_test_data)
 
 dataloader_train = torch.utils.data.DataLoader(dataset_train,
                                                batch_size=int(args.batch_size),
-                                               shuffle=False)
+                                               shuffle=True)
 
 dataloader_test = torch.utils.data.DataLoader(dataset_test,
                                               batch_size=int(args.batch_size),
@@ -134,10 +137,15 @@ class Model(torch.nn.Module):
 
         self.layers = torch.nn.Sequential()
         for l in range(len(layer_size) - 2):
-            self.layers.add_module(f'SimpleDropout_layer_{l + 1}',
-                                   SimpleDropout(float(d_prob[l])))
+
+
             self.layers.add_module(f'linear_layer_{l + 1}',
                                    torch.nn.Linear(int(layer_size[l]), int(layer_size[l + 1])))
+
+            self.layers.add_module(f'SimpleDropout_layer_{l + 1}',
+                                   WeightDropLinear(in_features=int(layer_size[l + 1]),out_features=int(layer_size[l + 1]),
+                                                    weight_dropout=float(d_prob[l])))
+
             self.layers.add_module(f'LeakyReLU_layer_{l + 1}',
                                    torch.nn.LeakyReLU())
 
@@ -145,7 +153,12 @@ class Model(torch.nn.Module):
                                torch.nn.Linear(int(layer_size[-2]), int(layer_size[-1])))
 
     def forward(self, x):
+        y_prim = x
+        # for layer in self.layers:
+        #     if isinstance(layer, DropConnect):
         y_prim = self.layers.forward(x)
+
+        # y_prim = self.layers.forward(x)
         return y_prim
 
 
@@ -205,7 +218,7 @@ for epoch in range(int(args.epoch)):
             metrics_mean_dict[f'R^2_{mode}'].append(R2)
 
             losses.append(loss.item())
-            R2_s.append(R2.item())
+            # R2_s.append(R2.item())
 
             if dataloader is dataloader_train:
                 loss.backward()
@@ -230,22 +243,9 @@ for epoch in range(int(args.epoch)):
             metrics_mean_dict,
             epoch
         )
-        if dataloader is dataloader_train:
-            losses_train.append(np.mean(losses))
-            R2_train.append(np.mean(R2_s))
-        else:
-            losses_test.append(np.mean(losses))
-            R2_test.append(np.mean(R2_s))
-
-plt.subplot(2, 1, 1)
-plt.title('loss')
-plt.plot(losses_train, label="loss_trian")
-plt.plot(losses_test, label="loss_test")
-plt.legend(loc='upper right', shadow=False, fontsize='medium')
-
-plt.subplot(2, 1, 2)
-plt.title('R2')
-plt.plot(R2_train, label="R2_trian")
-plt.plot(R2_test, label="R2_test")
-plt.legend(loc='lower right', shadow=False, fontsize='medium')
-plt.show()
+        # if dataloader is dataloader_train:
+        #     losses_train.append(np.mean(losses))
+        #     R2_train.append(np.mean(R2_s))
+        # else:
+        #     losses_test.append(np.mean(losses))
+        #     R2_test.append(np.mean(R2_s))
