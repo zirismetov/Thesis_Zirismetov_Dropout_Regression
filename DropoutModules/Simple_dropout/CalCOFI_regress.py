@@ -10,6 +10,7 @@ import time
 from Simple_Dropout_module import SimpleDropout
 from datetime import datetime
 from tqdm import tqdm
+import  os
 
 sys.path.append('/Users/zafarzhonirismetov/PycharmProjects/Thesis_Dropout_Regression/taskgen_files')
 import csv_utils_2
@@ -17,32 +18,32 @@ import file_utils
 import args_utils
 
 parser = argparse.ArgumentParser(description="Weather hypermarkets")
-parser.add_argument('-sequence_name',
-                    type=str,
-                    default='sequence')
-parser.add_argument('-run_name',
-                    type=str,
-                    default=str(time.time()))
-parser.add_argument('-lr',
-                    type=float,
-                    default=0.01)
-parser.add_argument('-batch_size',
-                    type=int,
-                    default=64)
-parser.add_argument('-test_size',
-                    type=float,
-                    default=0.20)
-parser.add_argument('-epoch',
-                    type=int,
-                    default=10)
-
-parser.add_argument('-drop_p',
-                    default='0, 0.5, 0.5',
-                    type=str)
-
-parser.add_argument('-layers_size',
-                    type=str,
-                    default='1,32,64,32,1')
+# parser.add_argument('-sequence_name',
+#                     type=str,
+#                     default='sequence')
+# parser.add_argument('-run_name',
+#                     type=str,
+#                     default=str(time.time()))
+# parser.add_argument('-lr',
+#                     type=float,
+#                     default=0.01)
+# parser.add_argument('-batch_size',
+#                     type=int,
+#                     default=64)
+# parser.add_argument('-test_size',
+#                     type=float,
+#                     default=0.20)
+# parser.add_argument('-epoch',
+#                     type=int,
+#                     default=10)
+#
+# parser.add_argument('-drop_p',
+#                     default='0, 0.5, 0.5',
+#                     type=str)
+#
+# parser.add_argument('-layers_size',
+#                     type=str,
+#                     default='1,32,64,32,1')
 
 parser.add_argument('-is_debug',
                     default=False,
@@ -237,6 +238,19 @@ for epoch in range(int(args.epoch)):
             losses_test.append(np.mean(losses))
             R2_test.append(np.mean(R2_s))
 
+name = ""
+for string in args.run_name:
+    string = string.replace("-", "")
+    name += string
+last = name[-6:]
+script_dir = os.path.dirname(__file__)
+results_dir = os.path.join(script_dir, 'Results_img/')
+sample_file_name = f"sample"
+
+if not os.path.isdir(results_dir):
+    os.makedirs(results_dir)
+
+
 plt.subplot(2, 1, 1)
 plt.title('loss')
 plt.plot(losses_train, label="loss_trian")
@@ -248,4 +262,4 @@ plt.title('R2')
 plt.plot(R2_train, label="R2_trian")
 plt.plot(R2_test, label="R2_test")
 plt.legend(loc='lower right', shadow=False, fontsize='medium')
-plt.show()
+plt.savefig(results_dir + last + sample_file_name)

@@ -20,28 +20,28 @@ import file_utils
 import args_utils
 
 parser = argparse.ArgumentParser(description="Weather hypermarkets")
-parser.add_argument('-sequence_name',
-                    type=str,
-                    default='sequence')
-parser.add_argument('-run_name',
-                    type=str,
-                    default=str(time.time()))
-parser.add_argument('-lr',
-                    type=float,
-                    default=0.01)
-parser.add_argument('-batch_size',
-                    type=int,
-                    default=64)
-parser.add_argument('-test_size',
-                    type=float,
-                    default=0.20)
-parser.add_argument('-epoch',
-                    type=int,
-                    default=5)
-
-parser.add_argument('-layers_size',
-                    type=str,
-                    default='1,64,64,64,1')
+# parser.add_argument('-sequence_name',
+#                     type=str,
+#                     default='sequence')
+# parser.add_argument('-run_name',
+#                     type=str,
+#                     default=str(time.time()))
+# parser.add_argument('-lr',
+#                     type=float,
+#                     default=0.01)
+# parser.add_argument('-batch_size',
+#                     type=int,
+#                     default=64)
+# parser.add_argument('-test_size',
+#                     type=float,
+#                     default=0.20)
+# parser.add_argument('-epoch',
+#                     type=int,
+#                     default=5)
+#
+# parser.add_argument('-layers_size',
+#                     type=str,
+#                     default='1,64,64,64,1')
 
 parser.add_argument('-is_debug',
                     default=False,

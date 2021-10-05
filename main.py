@@ -19,7 +19,7 @@ parser.add_argument('-sequence_name', type=str, default='sequence')
 parser.add_argument('-run_name', type=str, default=str(time.time()))
 parser.add_argument(
                     '-script',
-                    default='/Users/zafarzhonirismetov/PycharmProjects/Thesis_Dropout_Regression/DropoutModules/Advance_dropout/CalCOFI_advance.py',
+                    default='DropoutModules/GaussianDropout/CalCOFI_gauss.py',
                     type=str)
 parser.add_argument(
                     '-num_repeat',
