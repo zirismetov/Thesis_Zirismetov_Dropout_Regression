@@ -134,7 +134,7 @@ dataloader_test = torch.utils.data.DataLoader(dataset_test,
                                               batch_size=int(args.batch_size),
                                               shuffle=False)
 
-
+# python taskgen.py -dropoutModule advancedDropout gaussianDropout simpleDropout dropConnect -lr 0.1 0.01 0.001 -test_size 0.20 0.33 -batch_size 64 128 256 -layers_size 1,32,32,32,1 1,32,64,32,1 1,64,64,64,1 1,64,128,64,1 -drop_p 0,0.5,0.5 0.2,0.5,0.5 -epoch 5 10 15
 CustomDropout = getattr(__import__('DropoutModules.' + args.dropoutModule, fromlist=['Dropout']), 'Dropout')
 class Model(torch.nn.Module):
     def __init__(self, layers_size=[1, 32, 32, 32, 1], drop_p = [0,0.5,0.5]):
