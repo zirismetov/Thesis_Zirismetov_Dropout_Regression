@@ -1,7 +1,7 @@
 import torch
 from torch.autograd import Variable
 
-class GaussianDropout(torch.nn.Module):
+class Dropout(torch.nn.Module):
     def __init__(self, p=0.5):
         super().__init__()
         self.p = p

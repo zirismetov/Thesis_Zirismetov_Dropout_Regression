@@ -14,6 +14,13 @@ class CsvUtils2():
             with open(f'{path_sequence}/sequence-{os.path.basename(path_sequence)}.csv', mode='w') as csv_file:
                 csv_file.write('')
 
+    @staticmethod
+    def createOverall(path_sequence):
+        if os.path.exists(f'{path_sequence}/sequence-overall.csv'):
+            return
+        else:
+            with open(f'{path_sequence}/sequence-overall.csv', mode='w') as csv_file:
+                csv_file.write('')
     # results for each test instance/task
     @staticmethod
     def create_local(path_sequence, run_name):
@@ -26,6 +33,7 @@ class CsvUtils2():
         try:
             path_local_csv = f'{path_sequence}/{run_name}.csv'
             path_global_csv = f'{path_sequence}/sequence-{os.path.basename(path_sequence)}.csv'
+            path_overall_csv = f'./results/sequence-overall.csv'
 
             args_dict = copy.copy(args_dict)
             metrics_dict = copy.copy(metrics_dict)
@@ -39,7 +47,7 @@ class CsvUtils2():
                         not isinstance(each_dict[key], np.float32):
                         del each_dict[key]
 
-            for path_csv in [path_local_csv, path_global_csv]:
+            for path_csv in [path_local_csv, path_global_csv, path_overall_csv]:
 
                 if os.path.exists(path_csv):
                     with open(path_csv, 'r+') as outfile:
