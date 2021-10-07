@@ -26,7 +26,7 @@ else:
 parser = argparse.ArgumentParser(description="Weather hypermarkets")
 
 parser.add_argument('-is_debug',
-                    default=False,
+                    default=True,
                     type=lambda x: (str(x).lower() == 'true'))
 
 args, args_other = parser.parse_known_args()

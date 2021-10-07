@@ -2,10 +2,6 @@ import torch
 import numpy as np
 from torch.nn.parameter import Parameter
 import torch.nn.functional as F
-if torch.cuda.is_available():
-    device = 'cuda'
-else:
-    device = 'cpu'
 
 # class Module_layers(torch.nn.Module):
 #     def __init__(self, prob=0.5, layers='last', layer_size=[1, 32, 32, 32, 1]):
@@ -68,8 +64,7 @@ class Dropout(torch.nn.Module):
             mu = F.linear(h, self.weight_mu, self.bias_mu).mean()
             sigma = F.softplus(F.linear(h, self.weight_sigma, self.bias_sigma)).mean()
             # mask
-            epsilon = mu + sigma * torch.randn([c, n])
-            epsilon.to(device)
+            epsilon = mu + sigma * torch.randn([c, n]).cuda()
             mask = torch.sigmoid(epsilon)
 
             out = input.mul(mask).div(torch.sigmoid(mu.data / torch.sqrt(1. + 3.14 / 8. * sigma.data ** 2.)))
