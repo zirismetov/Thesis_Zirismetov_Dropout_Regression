@@ -1,12 +1,19 @@
 import json
+
 import os
-import time
+
 import platform
+import portalocker
+
+import pywintypes
+
 from shutil import copyfile
 
 import dict_to_obj as do
 # from dict_to_obj import DictToObj
 
+_overlapped=pywintypes.OVERLAPPED()
+lock = portalocker.RedisLock('ck1')
 PLATFORM_WINDOWS = 'Windows'
 
 if platform.system() == PLATFORM_WINDOWS:
@@ -15,6 +22,8 @@ if platform.system() == PLATFORM_WINDOWS:
 else:
     import fcntl
 
+class LockException(Exception):
+    pass
 
 class FileUtils(object):
 
@@ -27,31 +36,14 @@ class FileUtils(object):
             print(e)
 
     @staticmethod
-    def lock_file(f):
-        while True:
-            try:
-                if platform.system() == PLATFORM_WINDOWS:
-                    hfile = win32file._get_osfhandle(f.fileno())
-                    win32file.LockFileEx(hfile, win32con.LOCKFILE_FAIL_IMMEDIATELY | win32con.LOCKFILE_EXCLUSIVE_LOCK,
-                                         0, 0xffff0000, pywintypes.OVERLAPPED())
-                else:
-                    fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                    break
-            except:
-                time.sleep(0.1)
+    def lock_file(file_ ):
+        portalocker.lock(file_, portalocker.LOCK_EX)
+
+
 
     @staticmethod
     def unlock_file(f):
-        while True:
-            try:
-                if platform.system() == PLATFORM_WINDOWS:
-                    hfile = win32file._get_osfhandle(f.fileno())
-                    win32file.UnlockFileEx(hfile, 0, 0, 0xffff0000, pywintypes.OVERLAPPED())
-                else:
-                    fcntl.flock(f, fcntl.LOCK_UN)
-                break
-            except:
-                time.sleep(0.1)
+        portalocker.unlock(f)
 
     @staticmethod
     def deleteDir(dirPath, is_delete_dir_path = False):
@@ -137,9 +129,9 @@ class FileUtils(object):
     @staticmethod
     def writeJSON(path, obj):
         with open(path, 'w') as fp:
-            FileUtils.lock_file(fp)
+            portalocker.lock(fp, portalocker.LOCK_EX)
             json.dump(obj, fp, indent=4)
-            FileUtils.lock_file(fp)
+            fp.close()
 
     @staticmethod
     def saveJSON(path, obj):
@@ -152,7 +144,7 @@ class FileUtils(object):
             with open(path, 'r', encoding=encoding) as fp:
                 FileUtils.lock_file(fp)
                 result = '\n'.join(fp.readlines())
-                FileUtils.lock_file(fp)
+                # FileUtils.lock_file(fp)
         return result
 
 

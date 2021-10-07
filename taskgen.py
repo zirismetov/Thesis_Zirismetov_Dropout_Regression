@@ -6,7 +6,7 @@ import shlex
 import time
 from datetime import datetime
 import sys
-sys.path.append('/Users/zafarzhonirismetov/PycharmProjects/Thesis_Dropout_Regression/taskgen_files')
+sys.path.append('taskgen_files')
 import args_utils, file_utils
 import torch
 from sklearn.model_selection import ParameterGrid
@@ -37,7 +37,7 @@ parser.add_argument(
 
 parser.add_argument(
                     '-template',
-                    default='/Users/zafarzhonirismetov/PycharmProjects/Thesis_Dropout_Regression/template_loc.sh',
+                    default='template_loc.sh',
                     type=str)
 
 parser.add_argument(
@@ -59,7 +59,7 @@ args.sequence_name_orig = args.sequence_name
 args.sequence_name += ('-' + datetime.utcnow().strftime(f'%y-%m-%d-%H-%M-%S'))
 
 file_utils.FileUtils.createDir('./results')
-path_sequence = f'./results/{args.sequence_name}'
+path_sequence = f'/results/{args.sequence_name}'
 path_sequence_scripts = f'{path_sequence}/scripts'
 file_utils.FileUtils.createDir(path_sequence)
 file_utils.FileUtils.createDir(path_sequence_scripts)
@@ -188,23 +188,23 @@ for idx_run, run in enumerate(runs):
 
     run_name = args.sequence_name_orig + ('-' + datetime.utcnow().strftime(f'%y-%m-%d-%H-%M-%S'))
     path_run_sh = f'{path_sequence_scripts}/{run_name}.sh'
-    cmd = f'{str_cuda}python3 {args.script} -id {idx_run + 1} -run_name {args.sequence_name_orig}-{idx_run + 1}-run {str_cmd_params}'
+    cmd = f'python {args.script} -id {idx_run + 1} -run_name {args.sequence_name_orig}-{idx_run + 1}-run {str_cmd_params}'
     print(path_run_sh)
     print(cmd)
     file_utils.FileUtils.write_text_file(
         path_run_sh,
         file_utils.FileUtils.readAllAsString(args.template) +
-        f'\n{cmd} > ./logs/{args.sequence_name_orig}-{idx_run + 1}-run.log'
+        f'\n{cmd}'
     )
 
-    cmd = f'chmod +x {path_run_sh}'
+    cmd = f'icacls C:/Users/Kekuzbek/PycharmProjects/Thesis_Zirismetov_Dropout_Regression{path_run_sh[1:]}'
     stdout = subprocess.call(shlex.split(cmd))
 
     logging.info(f'{idx_run}/{len(runs)}: {path_run_sh}\n{cmd}')
     process = subprocess.Popen(
         path_run_sh,
         start_new_session=True,
-        shell=False)
+        shell=True)
     process.cuda_devices_for_run = cuda_devices_for_run
     parallel_processes.append(process)
 

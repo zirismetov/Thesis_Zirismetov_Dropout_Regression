@@ -19,6 +19,10 @@ import csv_utils_2
 import file_utils
 import args_utils
 
+if torch.cuda.is_available():
+    device = 'cuda'
+else:
+    device = 'cpu'
 parser = argparse.ArgumentParser(description="Weather hypermarkets")
 
 parser.add_argument('-is_debug',
@@ -30,7 +34,7 @@ args = args_utils.ArgsUtils.add_other_args(args, args_other)
 args.sequence_name_orig = args.sequence_name
 args.sequence_name += ('-' + datetime.utcnow().strftime(f'%y-%m-%d-%H-%M-%S'))
 
-removebrac = "[]''"
+removebrac = ['[',']',"'", '"']
 for key in args.__dict__:
     if isinstance(args.__dict__[key], str):
         value = (args.__dict__[key])
@@ -40,7 +44,7 @@ for key in args.__dict__:
     elif isinstance(args.__dict__[key], list):
         value = str(args.__dict__[key])
         for char in removebrac:
-            value = value.replace(char, "")
+            value = value.replace(char, '')
         args.__dict__.update({key: value})
 
 args.dataset = args.dataset.lower()
@@ -170,7 +174,7 @@ class Model(torch.nn.Module):
 
 model = Model(layers_size=args.layers_size,
               drop_p=args.drop_p)
-
+model.to(device)
 if args.dropoutModule == 'advancedDropout':
     dp_params = []
     res_params = []
@@ -225,11 +229,12 @@ for epoch in range(int(args.epoch)):
 
         for x, y in tqdm(dataloader, desc=mode):
 
-            y_prim = model.forward(torch.FloatTensor(x.float()))
-            y = torch.FloatTensor(y.float())
+            x = torch.FloatTensor(x.float()).to(device)
+            y = torch.FloatTensor(y.float()).to(device)
+            y_prim = (model.forward(x))
 
             loss = torch.mean(torch.abs(y - y_prim))
-            R2 = sklearn.metrics.r2_score(y.detach(), y_prim.detach())
+            R2 = sklearn.metrics.r2_score(y.detach().cpu(), y_prim.detach().cpu())
 
             metrics_mean_dict[f'loss_{mode}'].append(loss)
             metrics_mean_dict[f'R^2_{mode}'].append(R2)
