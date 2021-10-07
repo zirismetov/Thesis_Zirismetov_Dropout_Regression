@@ -71,7 +71,7 @@ csv_utils_2.CsvUtils2.create_local(path_sequence, args.run_name)
 class LoadDataset(torch.utils.data.Dataset):
     def __init__(self):
         if args.dataset == 'calcofi':
-            data_raw = pd.read_csv('datasets/CalCOFI.csv', low_memory=False)
+            data_raw = pd.read_csv('dataset/CalCOFI.csv', low_memory=False)
             # Predict temperature of water 1 features: salinity
             data_raw = data_raw[['Salnty', 'T_degC']]
             data_raw['Salnty'].replace(0, np.nan, inplace=True)
@@ -88,7 +88,7 @@ class LoadDataset(torch.utils.data.Dataset):
             self.y[:] = ((np_y[:] - np.min(np_y[:])) / (np.max(np_y[:]) - np.min(np_y[:]))) + 1
             self.y = np.expand_dims(self.y, axis=1)
         else:
-            data_raw = pd.read_csv('datasets/weatherHistory.csv')
+            data_raw = pd.read_csv('dataset/weatherHistory.csv')
             data_raw.drop("Loud Cover", axis=1, inplace=True)
             data_raw['Pressure (millibars)'].replace(0, np.nan, inplace=True)
             data_raw.fillna(method='pad', inplace=True)

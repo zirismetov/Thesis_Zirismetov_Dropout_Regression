@@ -6,49 +6,44 @@ import shlex
 import time
 from datetime import datetime
 import sys
-sys.path.append('taskgen_files')
+sys.path.append('C:/Users/Kekuzbek/PycharmProjects/Thesis_Zirismetov_Dropout_Regression/taskgen_files')
 import args_utils, file_utils
 import torch
 from sklearn.model_selection import ParameterGrid
 import subprocess
 import json
 import numpy as np
-
+from  multiprocessing import Pool
 parser = argparse.ArgumentParser(description="CalCOFI hypermarkets")
 parser.add_argument('-sequence_name', type=str, default='sequence')
 parser.add_argument('-run_name', type=str, default=str(time.time()))
 parser.add_argument(
-                    '-script',
-                    default='main.py',
-                    type=str)
+    '-script',
+    default='C:/Users/Kekuzbek/PycharmProjects/Thesis_Zirismetov_Dropout_Regression/main.py',
+    type=str)
 parser.add_argument(
-                    '-dataset',
-                    default='calcofi',
-                    type=str)
-# parser.add_argument(
-#                     '-dropoutModule',
-#                     default='SimpleDropout',
-#                     type=str)
+    '-num_repeat',
+    help='how many times each set of parameters should be repeated for testing stability',
+    default=1,
+    type=int)
 parser.add_argument(
-                    '-num_repeat',
-                    help='how many times each set of parameters should be repeated for testing stability',
-                    default=1,
-                    type=int)
+    '-dataset',
+    default='CalCOFI',
+    type=str)
+parser.add_argument(
+    '-template',
+    default='C:/Users/Kekuzbek/PycharmProjects/Thesis_Zirismetov_Dropout_Regression/template_loc.sh',
+    type=str)
 
 parser.add_argument(
-                    '-template',
-                    default='template_loc.sh',
-                    type=str)
+    '-num_tasks_in_parallel',
+    default=6,
+    type=int)
 
 parser.add_argument(
-                    '-num_tasks_in_parallel',
-                    default=6,
-                    type=int)
-
-parser.add_argument(
-                     '-num_cuda_devices_per_task',
-                     default=1,
-                     type=int)
+    '-num_cuda_devices_per_task',
+    default=1,
+    type=int)
 
 parser.add_argument('-is_single_task', default=False, type=lambda x: (str(x).lower() == 'true'))
 parser.add_argument('-is_force_start', default=True, type=lambda x: (str(x).lower() == 'true'))
@@ -59,7 +54,7 @@ args.sequence_name_orig = args.sequence_name
 args.sequence_name += ('-' + datetime.utcnow().strftime(f'%y-%m-%d-%H-%M-%S'))
 
 file_utils.FileUtils.createDir('./results')
-path_sequence = f'/results/{args.sequence_name}'
+path_sequence = f'./results/{args.sequence_name}'
 path_sequence_scripts = f'{path_sequence}/scripts'
 file_utils.FileUtils.createDir(path_sequence)
 file_utils.FileUtils.createDir(path_sequence_scripts)
@@ -132,7 +127,6 @@ if not args.is_force_start:
         exit()
 
 
-
 max_cuda_devices = 0
 cuda_devices_available = 0
 if not torch.cuda.is_available():
@@ -147,6 +141,14 @@ parallel_processes = []
 
 idx_cuda_device_seq = 0
 cuda_devices_list = np.arange(0, max_cuda_devices, dtype=np.int).tolist()
+
+def run_script( args):
+    # command = com
+    arg_str = args
+    # print("Starting command :{} with argument {}".format(command, arg_str))
+    result = subprocess.call(arg_str, shell=False)
+    # print("Completed command :{} with argument {}".format(command, arg_str))
+    return result
 
 for idx_run, run in enumerate(runs):
     cmd_params = ['-' + key + ' ' + str(value) for key, value in run.items()]
@@ -197,10 +199,12 @@ for idx_run, run in enumerate(runs):
         f'\n{cmd}'
     )
 
+
     cmd = f'icacls C:/Users/Kekuzbek/PycharmProjects/Thesis_Zirismetov_Dropout_Regression{path_run_sh[1:]}'
     stdout = subprocess.call(shlex.split(cmd))
 
-    logging.info(f'{idx_run}/{len(runs)}: {path_run_sh}\n{cmd}')
+    path_run_sh = f'C:/Users/Kekuzbek/PycharmProjects/Thesis_Zirismetov_Dropout_Regression{path_run_sh[1:]}'
+    logging.info(f'{idx_run}/{len(runs)}: {path_run_sh[1:]}\n{cmd}')
     process = subprocess.Popen(
         path_run_sh,
         start_new_session=True,
@@ -208,7 +212,7 @@ for idx_run, run in enumerate(runs):
     process.cuda_devices_for_run = cuda_devices_for_run
     parallel_processes.append(process)
 
-    time.sleep(1.1)  # delay for timestamp based naming
+    time.sleep(1.5)  # delay for timestamp based naming
 
     while len(parallel_processes) >= args.num_tasks_in_parallel:
         time.sleep(1)
