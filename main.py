@@ -30,7 +30,7 @@ args = args_utils.ArgsUtils.add_other_args(args, args_other)
 args.sequence_name_orig = args.sequence_name
 args.sequence_name += ('-' + datetime.utcnow().strftime(f'%y-%m-%d-%H-%M-%S'))
 
-removebrac = "[]''"
+removebrac = "[]' "
 for key in args.__dict__:
     if isinstance(args.__dict__[key], str):
         value = (args.__dict__[key])
@@ -43,16 +43,13 @@ for key in args.__dict__:
             value = value.replace(char, "")
         args.__dict__.update({key: value})
 
-args.dataset = args.dataset.lower()
 
+args.dataset = args.dataset.lower()
 args.sequence_name = ''.join(args.sequence_name).replace(',','').replace(' ', '')
 args.sequence_name_orig = ''.join(args.sequence_name_orig).replace(',','').replace(' ', '')
-
 args.layers_size = ''.join(args.layers_size)
-args.layers_size = args.layers_size.split(',')
 if args.dropoutModule != 'advancedDropout':
     args.drop_p = ''.join(args.drop_p)
-    args.drop_p = args.drop_p.split(',')
 
 path_sequence = f'./results/{args.sequence_name}'
 args.run_name += ('-' + datetime.utcnow().strftime(f'%y-%m-%d--%H-%M-%S'))
@@ -96,16 +93,16 @@ class LoadDataset(torch.utils.data.Dataset):
             self.X = data_X.to_numpy()
             np_x = np.copy(self.X)
             for i in range(np_x.shape[-1]):
-                self.X[:, i] = ((np_x[:, i] - np.min(np_x[:, i])) / (np.max(np_x[:, i]) - np.min(np_x[:, i])))
+                self.X[:, i] = ((np_x[:, i] - np.min(np_x[:, i])) / (np.max(np_x[:, i]) - np.min(np_x[:, i]))) + 1
 
             self.y = data_raw['Temperature (C)'].to_numpy()
             np_y = np.copy(self.y)
-            self.y[:] = ((np_y[:] - np.min(np_y[:])) / (np.max(np_y[:]) - np.min(np_y[:])))
+            self.y[:] = ((np_y[:] - np.min(np_y[:])) / (np.max(np_y[:]) - np.min(np_y[:]))) + 1
             self.y = np.expand_dims(self.y, axis=1)
 
     def __len__(self):
         if args.is_debug:
-            return 100
+            return 10
         return len(self.y)
 
     def __getitem__(self, item):
@@ -130,38 +127,43 @@ dataloader_test = torch.utils.data.DataLoader(dataset_test,
                                               batch_size=int(args.batch_size),
                                               shuffle=False)
 
-
-CustomDropout = getattr(__import__('DropoutModules.' + args.dropoutModule, fromlist=['Dropout']), 'Dropout')
+if args.dropoutModule != 'noDrop':
+    CustomDropout = getattr(__import__('DropoutModules.' + args.dropoutModule, fromlist=['Dropout']), 'Dropout')
+else:
+    pass
 class Model(torch.nn.Module):
-    def __init__(self, layers_size=[1, 32, 32, 32, 1], drop_p = [0,0.5,0.5]):
+    def __init__(self, layers_size, drop_p):
         super().__init__()
 
+        self.drop_p = drop_p.split(',')
+        self.layers_size = layers_size.split(',')
         self.layers = torch.nn.Sequential()
-        for l in range(len(layers_size) - 2):
+        if args.dataset == 'weatherhistory':
+            self.layers_size[0] = 2
+        for l in range(len(self.layers_size) - 2):
 
             if args.dropoutModule == 'gaussianDropout' or args.dropoutModule == 'simpleDropout' :
                 self.layers.add_module(f'{args.dropoutModule}_{l + 1}',
-                                       CustomDropout(float(drop_p[l])))
+                                       CustomDropout(float(self.drop_p[l])))
                 self.layers.add_module(f'linear_layer_{l + 1}',
-                                       torch.nn.Linear(int(layers_size[l]), int(layers_size[l + 1])))
+                                       torch.nn.Linear(int(self.layers_size[l]), int(self.layers_size[l + 1])))
 
             elif args.dropoutModule == 'dropConnect' :
                 self.layers.add_module(f'DropConnect_layer_{l + 1}',
-                                       CustomDropout(in_features=int(layers_size[l]),out_features=int(layers_size[l + 1]),
-                                                    weight_dropout=float(drop_p[l])))
+                                       CustomDropout(in_features=int(self.layers_size[l]),out_features=int(self.layers_size[l + 1]),
+                                                    weight_dropout=float(self.drop_p[l])))
             else:
                 self.layers.add_module(f'linear_layer_{l + 1}',
-                                       torch.nn.Linear(int(layers_size[l]), int(layers_size[l + 1])))
+                                       torch.nn.Linear(int(self.layers_size[l]), int(self.layers_size[l + 1])))
 
             self.layers.add_module(f'LeakyReLU_layer_{l + 1}',
                                    torch.nn.LeakyReLU())
-
             if args.dropoutModule == 'advancedDropout' and l < 2:
                 self.layers.add_module(f'advanceDropout_layer_{l + 1}',
-                                       CustomDropout(int(layers_size[l + 1])))
+                                       CustomDropout(int(self.layers_size[l + 1])))
 
         self.layers.add_module("last_linear_layer",
-                               torch.nn.Linear(int(layers_size[-2]), int(layers_size[-1])))
+                               torch.nn.Linear(int(self.layers_size[-2]), int(self.layers_size[-1])))
 
     def forward(self, x):
         y_prim = self.layers.forward(x)

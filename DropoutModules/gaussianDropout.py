@@ -2,7 +2,7 @@ import torch
 from torch.autograd import Variable
 
 class Dropout(torch.nn.Module):
-    def __init__(self, p=0.5):
+    def __init__(self, p):
         super().__init__()
         self.p = p
         if self.p < 1:

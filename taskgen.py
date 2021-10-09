@@ -21,14 +21,7 @@ parser.add_argument(
                     '-script',
                     default='main.py',
                     type=str)
-parser.add_argument(
-                    '-dataset',
-                    default='calcofi',
-                    type=str)
-# parser.add_argument(
-#                     '-dropoutModule',
-#                     default='SimpleDropout',
-#                     type=str)
+
 parser.add_argument(
                     '-num_repeat',
                     help='how many times each set of parameters should be repeated for testing stability',
