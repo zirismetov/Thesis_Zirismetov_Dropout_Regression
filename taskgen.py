@@ -30,7 +30,7 @@ parser.add_argument(
 
 parser.add_argument(
                     '-template',
-                    default='/Users/zafarzhonirismetov/PycharmProjects/Thesis_Dropout_Regression/template_loc.sh',
+                    default='template_loc.sh',
                     type=str)
 
 parser.add_argument(
