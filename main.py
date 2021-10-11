@@ -1,237 +1,301 @@
-import argparse
-import copy
 import logging
-import os
-import shlex
-import time
-from datetime import datetime
+import random
+import importlib
+import matplotlib.pylab as plt
+import numpy as np, pandas as pd
 import sys
-sys.path.append('/Users/zafarzhonirismetov/PycharmProjects/Thesis_Dropout_Regression/taskgen_files')
-import args_utils, file_utils
-import torch
-from sklearn.model_selection import ParameterGrid
-import subprocess
-import json
-import numpy as np
+import os
+import sklearn.metrics
+import torch.utils.data
+from sklearn.model_selection import train_test_split
+import argparse
+import time
 
-parser = argparse.ArgumentParser(description="CalCOFI hypermarkets")
-parser.add_argument('-sequence_name', type=str, default='sequence')
-parser.add_argument('-run_name', type=str, default=str(time.time()))
-parser.add_argument(
-                    '-script',
-                    default='/Users/zafarzhonirismetov/PycharmProjects/Thesis_Dropout_Regression/DropoutModules/Advance_dropout/CalCOFI_advance.py',
-                    type=str)
-parser.add_argument(
-                    '-num_repeat',
-                    help='how many times each set of parameters should be repeated for testing stability',
-                    default=1,
-                    type=int)
+from datetime import datetime
+from tqdm import tqdm
 
-parser.add_argument(
-                    '-template',
-                    default='/Users/zafarzhonirismetov/PycharmProjects/Thesis_Dropout_Regression/template_loc.sh',
-                    type=str)
+sys.path.append('taskgen_files')
+import csv_utils_2
+import file_utils
+import args_utils
 
-parser.add_argument(
-                    '-num_tasks_in_parallel',
-                    default=6,
-                    type=int)
+if torch.cuda.is_available():
+    device = 'cuda'
+else:
+    device = 'cpu'
 
-parser.add_argument(
-                     '-num_cuda_devices_per_task',
-                     default=1,
-                     type=int)
+parser = argparse.ArgumentParser(description="Weather hypermarkets")
 
-parser.add_argument('-is_single_task', default=False, type=lambda x: (str(x).lower() == 'true'))
-parser.add_argument('-is_force_start', default=True, type=lambda x: (str(x).lower() == 'true'))
+parser.add_argument('-is_debug',
+                    default=False,
+                    type=lambda x: (str(x).lower() == 'true'))
 
 args, args_other = parser.parse_known_args()
 args = args_utils.ArgsUtils.add_other_args(args, args_other)
 args.sequence_name_orig = args.sequence_name
 args.sequence_name += ('-' + datetime.utcnow().strftime(f'%y-%m-%d-%H-%M-%S'))
 
-file_utils.FileUtils.createDir('./results')
+removebrac = ['[',']',"'", '"']
+for key in args.__dict__:
+    if isinstance(args.__dict__[key], str):
+        value = (args.__dict__[key])
+        for char in removebrac:
+            value = value.replace(char, "")
+        args.__dict__.update({key: value})
+    elif isinstance(args.__dict__[key], list):
+        value = str(args.__dict__[key])
+        for char in removebrac:
+            value = value.replace(char, "")
+        args.__dict__.update({key: value})
+
+
+args.dataset = args.dataset.lower()
+args.sequence_name = ''.join(args.sequence_name).replace(',','').replace(' ', '')
+args.sequence_name_orig = ''.join(args.sequence_name_orig).replace(',','').replace(' ', '')
+args.layers_size = ''.join(args.layers_size)
+if args.dropoutModule != 'advancedDropout':
+    args.drop_p = ''.join(args.drop_p)
+
 path_sequence = f'./results/{args.sequence_name}'
-path_sequence_scripts = f'{path_sequence}/scripts'
-file_utils.FileUtils.createDir(path_sequence)
-file_utils.FileUtils.createDir(path_sequence_scripts)
-file_utils.FileUtils.createDir('./logs')
-file_utils.FileUtils.createDir('./artifacts')
+args.run_name += ('-' + datetime.utcnow().strftime(f'%y-%m-%d--%H-%M-%S'))
+path_run = f'./results/{args.sequence_name}/{args.run_name}'
+file_utils.FileUtils.createDir(path_run)
+file_utils.FileUtils.writeJSON(f'{path_run}/args.json', args.__dict__)
+csv_utils_2.CsvUtils2.create_global(path_sequence)
+csv_utils_2.CsvUtils2.createOverall('./results/')
+csv_utils_2.CsvUtils2.create_local(path_sequence, args.run_name)
 
-rootLogger = logging.getLogger()
-logFormatter = logging.Formatter("%(asctime)s [%(process)d] [%(thread)d] [%(levelname)s]  %(message)s")
-rootLogger.level = logging.DEBUG  # level
 
-fileHandler = logging.FileHandler(f'{path_sequence}/log.txt')
-fileHandler.setFormatter(logFormatter)
-rootLogger.addHandler(fileHandler)
+class LoadDataset(torch.utils.data.Dataset):
+    def __init__(self):
+        if args.dataset == 'calcofi':
+            data_raw = pd.read_csv('datasets/CalCOFI.csv', low_memory=False)
+            # Predict temperature of water 1 features: salinity
+            data_raw = data_raw[['Salnty', 'T_degC']]
+            data_raw['Salnty'].replace(0, np.nan, inplace=True)
+            data_raw['T_degC'].replace(0, np.nan, inplace=True)
+            data_raw.fillna(method='pad', inplace=True)
 
-consoleHandler = logging.StreamHandler()
-consoleHandler.setFormatter(logFormatter)
-rootLogger.addHandler(consoleHandler)
+            self.X = data_raw['Salnty'].to_numpy()
+            np_x = np.copy(self.X)
+            self.X[:] = ((np_x[:] - np.min(np_x[:])) / (np.max(np_x[:]) - np.min(np_x[:]))) + 1
+            self.X = np.expand_dims(self.X, axis=1)
 
-if hasattr(args, 'class_group_0'):
-    if isinstance(args.class_group_0, list):
-        args.class_group_0 = ' '.join(args.class_group_0)
-if hasattr(args, 'class_group_1'):
-    if isinstance(args.class_group_1, list):
-        args.class_group_1 = ' '.join(args.class_group_1)
-if hasattr(args, 'class_group_2'):
-    if isinstance(args.class_group_2, list):
-        args.class_group_2 = ' '.join(args.class_group_2)
-if hasattr(args, 'classes_include'):
-    if isinstance(args.classes_include, list):
-        args.classes_include = ' '.join(args.classes_include)
-if hasattr(args, 'datasource_jsons'):
-    if isinstance(args.datasource_jsons, list):
-        args.datasource_jsons = ' '.join(args.datasource_jsons)
-if hasattr(args, 'truncate_datasource'):
-    if isinstance(args.truncate_datasource, list):
-        args.truncate_datasource = ' '.join(args.truncate_datasource)
-
-# Skip these
-if hasattr(args, 'tf_path_test'):
-    if isinstance(args.tf_path_test, list):
-        args.tf_path_test = ' '.join(args.tf_path_test)
-    if isinstance(args.tf_path_train, list):
-        args.tf_path_train = ' '.join(args.tf_path_train)
-
-args_with_multiple_values = {}
-for key, value in args.__dict__.items():
-    if isinstance(value, list):
-        if len(value) > 1:
-            args_with_multiple_values[key] = value
-
-grid_runs = list(ParameterGrid(args_with_multiple_values))
-
-runs = []
-for grid_each in grid_runs:
-    for _ in range(args.num_repeat):
-        run = copy.deepcopy(args.__dict__)
-        run.update(grid_each)
-        runs.append(run)
-
-if len(runs) == 0:
-    logging.error('no grid search combinations found')
-    exit()
-
-logging.info(f'planned runs: {len(runs)}')
-logging.info(f'grid_runs:\n{json.dumps(grid_runs, indent=4)}')
-
-if not args.is_force_start:
-    print('are tests ok? proceed?')
-    if input('[y/n]: ') != 'y':
-        exit()
-
-# CsvUtils2.create_global(path_sequence)
-
-max_cuda_devices = 0
-cuda_devices_available = 0
-if not torch.cuda.is_available():
-    args.device = 'cpu'
-    logging.info('CUDA NOT AVAILABLE')
-else:
-    max_cuda_devices = torch.cuda.device_count()
-    cuda_devices_available = np.arange(max_cuda_devices).astype(np.int).tolist()
-
-cuda_devices_in_use = []
-parallel_processes = []
-
-idx_cuda_device_seq = 0
-cuda_devices_list = np.arange(0, max_cuda_devices, dtype=np.int).tolist()
-
-for idx_run, run in enumerate(runs):
-    cmd_params = ['-' + key + ' ' + str(value) for key, value in run.items()]
-    str_cmd_params = ' '.join(cmd_params)
-
-    str_cuda = ''
-    cuda_devices_for_run = []
-    if max_cuda_devices > 0:
-        if args.num_tasks_in_parallel <= args.num_cuda_devices_per_task:
-            for device_id in cuda_devices_available:
-                if device_id not in cuda_devices_in_use:
-                    cuda_devices_for_run.append(device_id)
-                    if len(cuda_devices_for_run) >= args.num_cuda_devices_per_task:
-                        break
-
-            if len(cuda_devices_for_run) < args.num_cuda_devices_per_task:
-                # reuse existing devices #TODO check to reuse by least recent device
-                for device_id in cuda_devices_in_use:
-                    cuda_devices_for_run.append(device_id)
-                    if len(cuda_devices_for_run) >= args.num_cuda_devices_per_task:
-                        break
-
-            for device_id in cuda_devices_for_run:
-                if device_id not in cuda_devices_in_use:
-                    cuda_devices_in_use.append(device_id)
+            self.y = data_raw['T_degC'].to_numpy()
+            np_y = np.copy(self.y)
+            self.y[:] = ((np_y[:] - np.min(np_y[:])) / (np.max(np_y[:]) - np.min(np_y[:]))) + 1
+            self.y = np.expand_dims(self.y, axis=1)
         else:
-            while len(cuda_devices_for_run) < args.num_cuda_devices_per_task:
-                cuda_devices_for_run.append(cuda_devices_list[idx_cuda_device_seq])
-                idx_cuda_device_seq += 1
-                if idx_cuda_device_seq >= len(cuda_devices_list):
-                    idx_cuda_device_seq = 0
+            data_raw = pd.read_csv('datasets/weatherHistory.csv')
+            data_raw.drop("Loud Cover", axis=1, inplace=True)
+            data_raw['Pressure (millibars)'].replace(0, np.nan, inplace=True)
+            data_raw.fillna(method='pad', inplace=True)
 
-        if len(cuda_devices_for_run):
-            str_cuda = f'CUDA_VISIBLE_DEVICES={",".join([str(it) for it in cuda_devices_for_run])} '
+            # Predict Weather with 2 features: Humidity and Pressure
+            data_X = data_raw.drop(['Formatted Date', 'Summary', 'Precip Type', 'Daily Summary',
+                                    'Apparent Temperature (C)', 'Temperature (C)', 'Visibility (km)',
+                                    'Wind Bearing (degrees)', 'Wind Speed (km/h)'], axis=1)
+            self.X = data_X.to_numpy()
+            np_x = np.copy(self.X)
+            for i in range(np_x.shape[-1]):
+                self.X[:, i] = ((np_x[:, i] - np.min(np_x[:, i])) / (np.max(np_x[:, i]) - np.min(np_x[:, i]))) + 1
 
-    # detect HPC
-    if '/mnt/home/' in os.getcwd():
-        str_cuda = ''
+            self.y = data_raw['Temperature (C)'].to_numpy()
+            np_y = np.copy(self.y)
+            self.y[:] = ((np_y[:] - np.min(np_y[:])) / (np.max(np_y[:]) - np.min(np_y[:]))) + 1
+            self.y = np.expand_dims(self.y, axis=1)
 
-    run_name = args.sequence_name_orig + ('-' + datetime.utcnow().strftime(f'%y-%m-%d-%H-%M-%S'))
-    path_run_sh = f'{path_sequence_scripts}/{run_name}.sh'
-    cmd = f'{str_cuda}python3 {args.script} -id {idx_run + 1} -run_name {args.sequence_name_orig}-{idx_run + 1}-run {str_cmd_params}'
-    print(path_run_sh)
-    print(cmd)
-    file_utils.FileUtils.write_text_file(
-        path_run_sh,
-        file_utils.FileUtils.readAllAsString(args.template) +
-        f'\n{cmd} > ./logs/{args.sequence_name_orig}-{idx_run + 1}-run.log'
+    def __len__(self):
+        if args.is_debug:
+            return 10
+        return len(self.y)
+
+    def __getitem__(self, item):
+        return self.X[item], self.y[item]
+
+
+dataset = LoadDataset()
+tr_idx = np.arange(len(dataset))
+subset_train_data, subset_test_data = train_test_split(
+    tr_idx,
+    test_size=float(args.test_size),
+    random_state=0)
+
+dataset_train = torch.utils.data.Subset(dataset, subset_train_data)
+dataset_test = torch.utils.data.Subset(dataset, subset_test_data)
+
+dataloader_train = torch.utils.data.DataLoader(dataset_train,
+                                               batch_size=int(args.batch_size),
+                                               shuffle=True)
+
+dataloader_test = torch.utils.data.DataLoader(dataset_test,
+                                              batch_size=int(args.batch_size),
+                                              shuffle=False)
+
+if args.dropoutModule != 'noDrop':
+    CustomDropout = getattr(__import__('DropoutModules.' + args.dropoutModule, fromlist=['Dropout']), 'Dropout')
+else:
+    pass
+class Model(torch.nn.Module):
+    def __init__(self, layers_size, drop_p):
+        super().__init__()
+
+        self.drop_p = drop_p.split(',')
+        self.layers_size = layers_size.split(',')
+        self.layers = torch.nn.Sequential()
+        if args.dataset !=  'calcofi':
+            self.layers_size[0] = 2
+        for l in range(len(self.layers_size) - 2):
+
+            if args.dropoutModule == 'gaussianDropout' or args.dropoutModule == 'simpleDropout' :
+                self.layers.add_module(f'{args.dropoutModule}_{l + 1}',
+                                       CustomDropout(float(self.drop_p[l])))
+                self.layers.add_module(f'linear_layer_{l + 1}',
+                                       torch.nn.Linear(int(self.layers_size[l]), int(self.layers_size[l + 1])))
+
+            elif args.dropoutModule == 'dropConnect' :
+                self.layers.add_module(f'DropConnect_layer_{l + 1}',
+                                       CustomDropout(in_features=int(self.layers_size[l]),out_features=int(self.layers_size[l + 1]),
+                                                    weight_dropout=float(self.drop_p[l])))
+            else:
+                self.layers.add_module(f'linear_layer_{l + 1}',
+                                       torch.nn.Linear(int(self.layers_size[l]), int(self.layers_size[l + 1])))
+
+            self.layers.add_module(f'LeakyReLU_layer_{l + 1}',
+                                   torch.nn.LeakyReLU())
+            if args.dropoutModule == 'advancedDropout' and l < 2:
+                self.layers.add_module(f'advanceDropout_layer_{l + 1}',
+                                       CustomDropout(int(self.layers_size[l + 1])))
+
+        self.layers.add_module("last_linear_layer",
+                               torch.nn.Linear(int(self.layers_size[-2]), int(self.layers_size[-1])))
+
+    def forward(self, x):
+        y_prim = self.layers.forward(x)
+        return y_prim
+
+
+model = Model(layers_size=args.layers_size,
+              drop_p=args.drop_p)
+
+if args.dropoutModule == 'advancedDropout':
+    dp_params = []
+    res_params = []
+    for m in model.layers:
+        if isinstance(m, CustomDropout):
+            dp_params.append(m.weight_h)
+            dp_params.append(m.bias_h)
+            dp_params.append(m.weight_mu)
+            dp_params.append(m.bias_mu)
+            dp_params.append(m.weight_sigma)
+            dp_params.append(m.bias_sigma)
+        elif isinstance(m, torch.nn.Linear):
+            res_params.append(m.weight)
+            if hasattr(m, "bias"):
+                res_params.append(m.bias)
+
+    opt = torch.optim.SGD([{'params': res_params, 'lr': float(args.lr)},
+                           {'params': dp_params, 'lr': 1e-4}], momentum=0.9, weight_decay=5e-4)
+else:
+    opt = torch.optim.Adam(
+        model.parameters(),
+        lr=float(args.lr)
     )
 
-    cmd = f'chmod +x {path_run_sh}'
-    stdout = subprocess.call(shlex.split(cmd))
+best_loss_test = []
+best_R2_test = []
+losses_train = []
+losses_test = []
+R2_train = []
+R2_test = []
+metrics_mean_dict = {'loss_train': None,
+                     'R^2_train': None,
+                     'loss_test': 0,
+                     'R^2_test': 0,
+                     'best_loss_test': 0,
+                     'best_R^2_test': 0
+                     }
+for epoch in range(int(args.epoch)):
 
-    logging.info(f'{idx_run}/{len(runs)}: {path_run_sh}\n{cmd}')
-    process = subprocess.Popen(
-        path_run_sh,
-        start_new_session=True,
-        shell=False)
-    process.cuda_devices_for_run = cuda_devices_for_run
-    parallel_processes.append(process)
-
-    time.sleep(1.1)  # delay for timestamp based naming
-
-    while len(parallel_processes) >= args.num_tasks_in_parallel:
-        time.sleep(1)
-        parallel_processes_filtred = []
-        for process in parallel_processes:
-            if process.poll() is not None:
-                logging.info(process.stdout)
-                logging.error(process.stderr)
-                # finished
-                for device_id in process.cuda_devices_for_run:
-                    if device_id in cuda_devices_in_use:
-                        cuda_devices_in_use.remove(device_id)
-            else:
-                parallel_processes_filtred.append(process)
-        parallel_processes = parallel_processes_filtred
-
-    if args.is_single_task:
-        logging.info('Single task test debug mode completed')
-        exit()
-
-while len(parallel_processes) > 0:
-    time.sleep(1)
-    parallel_processes_filtred = []
-    for process in parallel_processes:
-        if process.poll() is not None:
-            # finished
-            for device_id in process.cuda_devices_for_run:
-                if device_id in cuda_devices_in_use:
-                    cuda_devices_in_use.remove(device_id)
+    for dataloader in [dataloader_train, dataloader_test]:
+        losses = []
+        R2_s = []
+        if dataloader is dataloader_test:
+            model.eval()
+            mode = 'test'
         else:
-            parallel_processes_filtred.append(process)
-    parallel_processes = parallel_processes_filtred
+            model.train()
+            mode = 'train'
 
-logging.info('TaskGen finished')
+        metrics_mean_dict[f'loss_{mode}'] = []
+        metrics_mean_dict[f'R^2_{mode}'] = []
+
+        for x, y in tqdm(dataloader, desc=mode):
+
+            x = torch.FloatTensor(x.float()).to(device)
+            y = torch.FloatTensor(y.float()).to(device)
+            y_prim = (model.forward(x))
+
+            loss = torch.mean(torch.abs(y - y_prim))
+            R2 = sklearn.metrics.r2_score(y.detach().cpu(), y_prim.detach().cpu())
+
+            metrics_mean_dict[f'loss_{mode}'].append(loss)
+            metrics_mean_dict[f'R^2_{mode}'].append(R2)
+
+            losses.append(loss.item())
+            R2_s.append(R2.item())
+
+            if dataloader is dataloader_train:
+                loss.backward()
+                opt.step()
+                opt.zero_grad()
+
+        metrics_mean_dict[f'loss_{mode}'] = round((torch.mean(torch.FloatTensor(metrics_mean_dict[f'loss_{mode}'])))
+                                                  .numpy().item(), 4)
+        metrics_mean_dict[f'R^2_{mode}'] = round((torch.mean(torch.FloatTensor(metrics_mean_dict[f'R^2_{mode}'])))
+                                                 .numpy().item(), 4)
+
+        if dataloader is dataloader_test:
+            best_loss_test.append(metrics_mean_dict['loss_test'])
+            best_R2_test.append(metrics_mean_dict['R^2_test'])
+            metrics_mean_dict['best_loss_test'] = min(best_loss_test)
+            metrics_mean_dict['best_R^2_test'] = max(best_R2_test)
+
+        csv_utils_2.CsvUtils2.add_hparams(
+            path_sequence,
+            args.run_name,
+            args.__dict__,
+            metrics_mean_dict,
+            epoch
+        )
+        if dataloader is dataloader_train:
+            losses_train.append(np.mean(losses))
+            R2_train.append(np.mean(R2_s))
+        else:
+            losses_test.append(np.mean(losses))
+            R2_test.append(np.mean(R2_s))
+
+name = ""
+for string in args.run_name:
+    string = string.replace("-", "")
+    name += string
+last = name[-6:]
+script_dir = path_run
+results_dir = os.path.join(script_dir, 'Results_img/')
+sample_file_name = f"sample"
+
+if not os.path.isdir(results_dir):
+    os.makedirs(results_dir)
+
+plt.subplot(2, 1, 1)
+plt.title('loss')
+plt.plot(losses_train, label="loss_trian")
+plt.plot(losses_test, label="loss_test")
+plt.legend(loc='upper right', shadow=False, fontsize='medium')
+
+plt.subplot(2, 1, 2)
+plt.title('R2')
+plt.plot(R2_train, label="R2_trian")
+plt.plot(R2_test, label="R2_test")
+plt.legend(loc='lower right', shadow=False, fontsize='medium')
+plt.savefig(results_dir + last + sample_file_name)

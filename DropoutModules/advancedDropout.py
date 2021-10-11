@@ -33,7 +33,7 @@ import torch.nn.functional as F
 #         return y_prim
 #
 
-class AdvancedDropout(torch.nn.Module):
+class Dropout(torch.nn.Module):
 
     def __init__(self, num, init_mu=0, init_sigma=1.2, reduction=16):
         '''
