@@ -26,6 +26,7 @@ else:
 
 parser = argparse.ArgumentParser(description="Weather hypermarkets")
 
+
 parser.add_argument('-is_debug',
                     default=False,
                     type=lambda x: (str(x).lower() == 'true'))
@@ -35,7 +36,7 @@ args = args_utils.ArgsUtils.add_other_args(args, args_other)
 args.sequence_name_orig = args.sequence_name
 args.sequence_name += ('-' + datetime.utcnow().strftime(f'%y-%m-%d-%H-%M-%S'))
 
-removebrac = ['[',']',"'", '"']
+removebrac = ['[', ']', "'", '"']
 for key in args.__dict__:
     if isinstance(args.__dict__[key], str):
         value = (args.__dict__[key])
@@ -48,10 +49,9 @@ for key in args.__dict__:
             value = value.replace(char, "")
         args.__dict__.update({key: value})
 
-
 args.dataset = args.dataset.lower()
-args.sequence_name = ''.join(args.sequence_name).replace(',','').replace(' ', '')
-args.sequence_name_orig = ''.join(args.sequence_name_orig).replace(',','').replace(' ', '')
+args.sequence_name = ''.join(args.sequence_name).replace(',', '').replace(' ', '')
+args.sequence_name_orig = ''.join(args.sequence_name_orig).replace(',', '').replace(' ', '')
 args.layers_size = ''.join(args.layers_size)
 if args.dropoutModule != 'advancedDropout':
     args.drop_p = ''.join(args.drop_p)
@@ -71,19 +71,22 @@ class LoadDataset(torch.utils.data.Dataset):
         if args.dataset == 'calcofi':
             data_raw = pd.read_csv('datasets/CalCOFI.csv', low_memory=False)
             # Predict temperature of water 1 features: salinity
-            data_raw = data_raw[['Salnty', 'T_degC']]
+            data_raw = data_raw[['Salnty', 'Depthm', 'T_degC']]
             data_raw['Salnty'].replace(0, np.nan, inplace=True)
+            # data_raw['Depthm'].replace(0, np.nan, inplace=True)
             data_raw['T_degC'].replace(0, np.nan, inplace=True)
             data_raw.fillna(method='pad', inplace=True)
 
-            self.X = data_raw['Salnty'].to_numpy()
+            self.X = data_raw[['Salnty', 'Depthm']].copy().to_numpy()
             np_x = np.copy(self.X)
-            self.X[:] = ((np_x[:] - np.min(np_x[:])) / (np.max(np_x[:]) - np.min(np_x[:]))) + 1
-            self.X = np.expand_dims(self.X, axis=1)
+            for i in range(np_x.shape[-1]):
+                self.X[:, i] = ((np_x[:, i] - np.min(np_x[:, i])) / (np.max(np_x[:, i]) - np.min(np_x[:, i])))
+            # self.X[:] = ((np_x[:] - np.min(np_x[:])) / (np.max(np_x[:]) - np.min(np_x[:]))) + 1
+            # self.X = np.expand_dims(self.X, axis=1)
 
             self.y = data_raw['T_degC'].to_numpy()
             np_y = np.copy(self.y)
-            self.y[:] = ((np_y[:] - np.min(np_y[:])) / (np.max(np_y[:]) - np.min(np_y[:]))) + 1
+            self.y[:] = ((np_y[:] - np.min(np_y[:])) / (np.max(np_y[:]) - np.min(np_y[:])))
             self.y = np.expand_dims(self.y, axis=1)
         else:
             data_raw = pd.read_csv('datasets/weatherHistory.csv')
@@ -92,22 +95,24 @@ class LoadDataset(torch.utils.data.Dataset):
             data_raw.fillna(method='pad', inplace=True)
 
             # Predict Weather with 2 features: Humidity and Pressure
-            data_X = data_raw.drop(['Formatted Date', 'Summary', 'Precip Type', 'Daily Summary',
-                                    'Apparent Temperature (C)', 'Temperature (C)', 'Visibility (km)',
-                                    'Wind Bearing (degrees)', 'Wind Speed (km/h)'], axis=1)
-            self.X = data_X.to_numpy()
+            # data_X = data_raw.drop(['Formatted Date', 'Summary', 'Precip Type', 'Daily Summary',
+            #                         'Apparent Temperature (C)', 'Temperature (C)', 'Visibility (km)',
+            #                         'Wind Bearing (degrees)', 'Wind Speed (km/h)'], axis=1)
+            self.X = data_raw[['Wind Speed (km/h)', 'Humidity', 'Wind Bearing (degrees)']].to_numpy()
             np_x = np.copy(self.X)
             for i in range(np_x.shape[-1]):
-                self.X[:, i] = ((np_x[:, i] - np.min(np_x[:, i])) / (np.max(np_x[:, i]) - np.min(np_x[:, i]))) + 1
+                self.X[:, i] = ((np_x[:, i] - np.min(np_x[:, i])) / (np.max(np_x[:, i]) - np.min(np_x[:, i])))
+            # self.X[:] = ((np_x[:] - np.min(np_x[:])) / (np.max(np_x[:]) - np.min(np_x[:]))) + 1
+            # self.X = np.expand_dims(self.X, axis=1)
 
             self.y = data_raw['Temperature (C)'].to_numpy()
             np_y = np.copy(self.y)
-            self.y[:] = ((np_y[:] - np.min(np_y[:])) / (np.max(np_y[:]) - np.min(np_y[:]))) + 1
+            self.y[:] = ((np_y[:] - np.min(np_y[:])) / (np.max(np_y[:]) - np.min(np_y[:])))
             self.y = np.expand_dims(self.y, axis=1)
 
     def __len__(self):
         if args.is_debug:
-            return 10
+            return int(len(self.y)/5)
         return len(self.y)
 
     def __getitem__(self, item):
@@ -132,10 +137,11 @@ dataloader_test = torch.utils.data.DataLoader(dataset_test,
                                               batch_size=int(args.batch_size),
                                               shuffle=False)
 
+
 if args.dropoutModule != 'noDrop':
     CustomDropout = getattr(__import__('DropoutModules.' + args.dropoutModule, fromlist=['Dropout']), 'Dropout')
-else:
-    pass
+
+
 class Model(torch.nn.Module):
     def __init__(self, layers_size, drop_p):
         super().__init__()
@@ -143,29 +149,25 @@ class Model(torch.nn.Module):
         self.drop_p = drop_p.split(',')
         self.layers_size = layers_size.split(',')
         self.layers = torch.nn.Sequential()
-        if args.dataset !=  'calcofi':
-            self.layers_size[0] = 2
+
         for l in range(len(self.layers_size) - 2):
 
-            if args.dropoutModule == 'gaussianDropout' or args.dropoutModule == 'simpleDropout' :
-                self.layers.add_module(f'{args.dropoutModule}_{l + 1}',
-                                       CustomDropout(float(self.drop_p[l])))
-                self.layers.add_module(f'linear_layer_{l + 1}',
-                                       torch.nn.Linear(int(self.layers_size[l]), int(self.layers_size[l + 1])))
-
-            elif args.dropoutModule == 'dropConnect' :
-                self.layers.add_module(f'DropConnect_layer_{l + 1}',
-                                       CustomDropout(in_features=int(self.layers_size[l]),out_features=int(self.layers_size[l + 1]),
-                                                    weight_dropout=float(self.drop_p[l])))
+            if args.dropoutModule == 'dropConnect':
+                if l == 0: self.layers.add_module(f'linear_layer_{l + 1}',
+                                   torch.nn.Linear(int(self.layers_size[0]), int(self.layers_size[1])))
+                else:
+                    self.layers.add_module(f'dropConnect_{l + 1}',
+                                           CustomDropout(float(self.drop_p[l]), self.layers_size, l))
             else:
                 self.layers.add_module(f'linear_layer_{l + 1}',
                                        torch.nn.Linear(int(self.layers_size[l]), int(self.layers_size[l + 1])))
 
             self.layers.add_module(f'LeakyReLU_layer_{l + 1}',
                                    torch.nn.LeakyReLU())
-            if args.dropoutModule == 'advancedDropout' and l < 2:
-                self.layers.add_module(f'advanceDropout_layer_{l + 1}',
-                                       CustomDropout(int(self.layers_size[l + 1])))
+
+            if args.dropoutModule != "noDrop" and args.dropoutModule != "dropConnect":
+                self.layers.add_module(f'{args.dropoutModule}_{l + 1}',
+                                       CustomDropout(float(self.drop_p[l]), self.layers_size, l))
 
         self.layers.add_module("last_linear_layer",
                                torch.nn.Linear(int(self.layers_size[-2]), int(self.layers_size[-1])))
@@ -215,9 +217,12 @@ metrics_mean_dict = {'loss_train': None,
                      'best_loss_test': 0,
                      'best_R^2_test': 0
                      }
+
 for epoch in range(int(args.epoch)):
+    logging.warning(f"epochs left: {int(args.epoch) - epoch} ")
 
     for dataloader in [dataloader_train, dataloader_test]:
+
         losses = []
         R2_s = []
         if dataloader is dataloader_test:
@@ -239,11 +244,11 @@ for epoch in range(int(args.epoch)):
             loss = torch.mean(torch.abs(y - y_prim))
             R2 = sklearn.metrics.r2_score(y.detach().cpu(), y_prim.detach().cpu())
 
-            metrics_mean_dict[f'loss_{mode}'].append(loss)
+            metrics_mean_dict[f'loss_{mode}'].append(loss.item())
             metrics_mean_dict[f'R^2_{mode}'].append(R2)
 
             losses.append(loss.item())
-            R2_s.append(R2.item())
+            R2_s.append(R2)
 
             if dataloader is dataloader_train:
                 loss.backward()
@@ -287,15 +292,29 @@ sample_file_name = f"sample"
 if not os.path.isdir(results_dir):
     os.makedirs(results_dir)
 
-plt.subplot(2, 1, 1)
-plt.title('loss')
-plt.plot(losses_train, label="loss_trian")
-plt.plot(losses_test, label="loss_test")
+
+moving_averages_train = pd.DataFrame(losses_train).rolling(3, min_periods=1).mean()
+moving_averages_test = pd.DataFrame(losses_test).rolling(3, min_periods=1).mean()
+plt.subplot(3, 1, 1)
+plt.title('Simple Moving Average of Loss')
+plt.plot(moving_averages_train, label="loss_trian")
+plt.plot(moving_averages_test, label="loss_test")
 plt.legend(loc='upper right', shadow=False, fontsize='medium')
 
-plt.subplot(2, 1, 2)
+plt.subplot(3, 1, 2)
 plt.title('R2')
 plt.plot(R2_train, label="R2_trian")
 plt.plot(R2_test, label="R2_test")
+plt.yscale('log')
 plt.legend(loc='lower right', shadow=False, fontsize='medium')
+
+moving_averages_train_r2 = pd.DataFrame(R2_train).rolling(3, min_periods=1).mean()
+moving_averages_test_r2 = pd.DataFrame(R2_test).rolling(3, min_periods=1).mean()
+plt.subplot(3, 1, 3)
+plt.title('R2_MEAN_of_3')
+plt.plot(moving_averages_train_r2, label="R2_trian")
+plt.plot(moving_averages_test_r2, label="R2_test")
+plt.legend(loc='lower right', shadow=False, fontsize='medium')
+
+plt.tight_layout()
 plt.savefig(results_dir + last + sample_file_name)

@@ -2,12 +2,12 @@ import torch
 
 
 class Dropout(torch.nn.Module):
-    def __init__(self, p=0.5):
+    def __init__(self, drop_p, layers_size, l):
         super().__init__()
-        self.p = p
+        self.p = drop_p
         # multiplier is 1/(1-p). Set multiplier to 0 when p=1 to avoid error...
         if self.p < 1:
-            self.multiplier = 1.0 / (1.0 - p)
+            self.multiplier = 1.0 / (1.0 - self.p)
         else:
             self.multiplier = 0.0
 
