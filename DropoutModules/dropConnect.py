@@ -5,9 +5,10 @@ import torch
 
 class Dropout(torch.nn.Linear):
 
-    def __init__(self, *args, weight_dropout=0.0, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, drop_p, layers_size, l,  *args, **kwargs):
+        super().__init__(in_features=int(layers_size[l]), out_features=int(layers_size[l+1]))
         weights = ['weight']
+        weight_dropout = drop_p
         _weight_drop(self, weights, weight_dropout)
 
 

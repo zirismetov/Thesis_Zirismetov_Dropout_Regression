@@ -1,15 +1,5 @@
 import dict_to_obj as do
 
-
-# class DictToObj:
-#     def __init__(self, **entries):
-#         self.__dict__.update(entries)
-#
-# def dict_list_append(dict, key, value):
-#     if key not in dict:
-#         dict[key] = []
-#     dict[key].append(value)
-
 class ArgsUtils(object):
     @staticmethod
     def log_args(args, script, logging_utils):

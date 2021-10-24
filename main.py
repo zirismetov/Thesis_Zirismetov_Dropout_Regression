@@ -14,27 +14,28 @@ import time
 from datetime import datetime
 from tqdm import tqdm
 
-sys.path.append('taskgen_files')
+sys.path.append('C:/Users/Kekuzbek/PycharmProjects/Thesis_Zirismetov_Dropout_Regression/taskgen_files')
 import csv_utils_2
 import file_utils
 import args_utils
 
 if torch.cuda.is_available():
-    device = 'cuda'
+    device = "cuda"
 else:
-    device = 'cpu'
-parser = argparse.ArgumentParser(description="Weather hypermarkets")
+    device = "cpu"
+
+parser = argparse.ArgumentParser(description="hypermarkets")
 
 parser.add_argument('-is_debug',
-                    default=True,
+                    default=False,
                     type=lambda x: (str(x).lower() == 'true'))
 
 args, args_other = parser.parse_known_args()
 args = args_utils.ArgsUtils.add_other_args(args, args_other)
-args.sequence_name_orig = args.sequence_name
+args.sequence_name_orig = str(args.sequence_name[0])
 args.sequence_name += ('-' + datetime.utcnow().strftime(f'%y-%m-%d-%H-%M-%S'))
 
-removebrac = ['[',']',"'", '"']
+removebrac = ['[', ']', "'", '"']
 for key in args.__dict__:
     if isinstance(args.__dict__[key], str):
         value = (args.__dict__[key])
@@ -44,72 +45,78 @@ for key in args.__dict__:
     elif isinstance(args.__dict__[key], list):
         value = str(args.__dict__[key])
         for char in removebrac:
-            value = value.replace(char, '')
+            value = value.replace(char, "")
         args.__dict__.update({key: value})
 
 args.dataset = args.dataset.lower()
-
-args.sequence_name = ''.join(args.sequence_name).replace(',','').replace(' ', '')
-args.sequence_name_orig = ''.join(args.sequence_name_orig).replace(',','').replace(' ', '')
-
+args.sequence_name = ''.join(args.sequence_name).replace(',', '').replace(' ', '')
+args.sequence_name_orig = ''.join(args.sequence_name_orig).replace(',', '').replace(' ', '')
 args.layers_size = ''.join(args.layers_size)
-args.layers_size = args.layers_size.split(',')
 if args.dropoutModule != 'advancedDropout':
     args.drop_p = ''.join(args.drop_p)
-    args.drop_p = args.drop_p.split(',')
 
 path_sequence = f'./results/{args.sequence_name}'
 args.run_name += ('-' + datetime.utcnow().strftime(f'%y-%m-%d--%H-%M-%S'))
 path_run = f'./results/{args.sequence_name}/{args.run_name}'
+path_overall_results = f'./results/{args.sequence_name_orig}'
 file_utils.FileUtils.createDir(path_run)
 file_utils.FileUtils.writeJSON(f'{path_run}/args.json', args.__dict__)
 csv_utils_2.CsvUtils2.create_global(path_sequence)
-csv_utils_2.CsvUtils2.createOverall('./results/')
+csv_utils_2.CsvUtils2.createOverall(path_overall_results)
 csv_utils_2.CsvUtils2.create_local(path_sequence, args.run_name)
 
+total_avg_y = 0
 
 class LoadDataset(torch.utils.data.Dataset):
     def __init__(self):
+        global total_avg_y
         if args.dataset == 'calcofi':
-            data_raw = pd.read_csv('dataset/CalCOFI.csv', low_memory=False)
+            data_raw = pd.read_csv('datasets/CalCOFI.csv', low_memory=False)
             # Predict temperature of water 1 features: salinity
-            data_raw = data_raw[['Salnty', 'T_degC']]
+            data_raw = data_raw[['Salnty', 'Depthm', 'T_degC']]
             data_raw['Salnty'].replace(0, np.nan, inplace=True)
+            # data_raw['Depthm'].replace(0, np.nan, inplace=True)
             data_raw['T_degC'].replace(0, np.nan, inplace=True)
             data_raw.fillna(method='pad', inplace=True)
 
-            self.X = data_raw['Salnty'].to_numpy()
+            self.X = data_raw[['Salnty', 'Depthm']].copy().to_numpy()
             np_x = np.copy(self.X)
-            self.X[:] = ((np_x[:] - np.min(np_x[:])) / (np.max(np_x[:]) - np.min(np_x[:]))) + 1
-            self.X = np.expand_dims(self.X, axis=1)
+            for i in range(np_x.shape[-1]):
+                self.X[:, i] = ((np_x[:, i] - np.min(np_x[:, i])) / (np.max(np_x[:, i]) - np.min(np_x[:, i])))
+            # self.X[:] = ((np_x[:] - np.min(np_x[:])) / (np.max(np_x[:]) - np.min(np_x[:]))) + 1
+            # self.X = np.expand_dims(self.X, axis=1)
 
             self.y = data_raw['T_degC'].to_numpy()
             np_y = np.copy(self.y)
-            self.y[:] = ((np_y[:] - np.min(np_y[:])) / (np.max(np_y[:]) - np.min(np_y[:]))) + 1
+            self.y[:] = ((np_y[:] - np.min(np_y[:])) / (np.max(np_y[:]) - np.min(np_y[:])))
             self.y = np.expand_dims(self.y, axis=1)
+            total_avg_y = np.average(self.y, axis=0)
         else:
-            data_raw = pd.read_csv('dataset/weatherHistory.csv')
+            data_raw = pd.read_csv('datasets/weatherHistory.csv')
             data_raw.drop("Loud Cover", axis=1, inplace=True)
             data_raw['Pressure (millibars)'].replace(0, np.nan, inplace=True)
             data_raw.fillna(method='pad', inplace=True)
 
             # Predict Weather with 2 features: Humidity and Pressure
-            data_X = data_raw.drop(['Formatted Date', 'Summary', 'Precip Type', 'Daily Summary',
-                                    'Apparent Temperature (C)', 'Temperature (C)', 'Visibility (km)',
-                                    'Wind Bearing (degrees)', 'Wind Speed (km/h)'], axis=1)
-            self.X = data_X.to_numpy()
+            # data_X = data_raw.drop(['Formatted Date', 'Summary', 'Precip Type', 'Daily Summary',
+            #                         'Apparent Temperature (C)', 'Temperature (C)', 'Visibility (km)',
+            #                         'Wind Bearing (degrees)', 'Wind Speed (km/h)'], axis=1)
+            self.X = data_raw[['Wind Speed (km/h)', 'Humidity', 'Wind Bearing (degrees)']].to_numpy()
             np_x = np.copy(self.X)
             for i in range(np_x.shape[-1]):
                 self.X[:, i] = ((np_x[:, i] - np.min(np_x[:, i])) / (np.max(np_x[:, i]) - np.min(np_x[:, i])))
+            # self.X[:] = ((np_x[:] - np.min(np_x[:])) / (np.max(np_x[:]) - np.min(np_x[:]))) + 1
+            # self.X = np.expand_dims(self.X, axis=1)
 
             self.y = data_raw['Temperature (C)'].to_numpy()
             np_y = np.copy(self.y)
             self.y[:] = ((np_y[:] - np.min(np_y[:])) / (np.max(np_y[:]) - np.min(np_y[:])))
             self.y = np.expand_dims(self.y, axis=1)
+            total_avg_y = np.average(self.y)
 
     def __len__(self):
         if args.is_debug:
-            return 100
+            return 500
         return len(self.y)
 
     def __getitem__(self, item):
@@ -134,38 +141,36 @@ dataloader_test = torch.utils.data.DataLoader(dataset_test,
                                               batch_size=int(args.batch_size),
                                               shuffle=False)
 
-# python taskgen.py -dropoutModule advancedDropout gaussianDropout simpleDropout dropConnect -lr 0.1 0.01 0.001 -test_size 0.20 0.33 -batch_size 64 128 256 -layers_size 1,32,32,32,1 1,32,64,32,1 1,64,64,64,1 1,64,128,64,1 -drop_p 0,0.5,0.5 0.2,0.5,0.5 -epoch 5 10 15
-CustomDropout = getattr(__import__('DropoutModules.' + args.dropoutModule, fromlist=['Dropout']), 'Dropout')
+if args.dropoutModule != 'noDrop':
+    CustomDropout = getattr(__import__('DropoutModules.' + args.dropoutModule, fromlist=['Dropout']), 'Dropout')
+
+
 class Model(torch.nn.Module):
-    def __init__(self, layers_size=[1, 32, 32, 32, 1], drop_p = [0,0.5,0.5]):
+    def __init__(self, layers_size, drop_p):
         super().__init__()
 
+        self.drop_p = drop_p.split(',')
+        self.layers_size = layers_size.split(',')
         self.layers = torch.nn.Sequential()
-        for l in range(len(layers_size) - 2):
 
-            if args.dropoutModule == 'gaussianDropout' or args.dropoutModule == 'simpleDropout' :
-                self.layers.add_module(f'{args.dropoutModule}_{l + 1}',
-                                       CustomDropout(float(drop_p[l])))
-                self.layers.add_module(f'linear_layer_{l + 1}',
-                                       torch.nn.Linear(int(layers_size[l]), int(layers_size[l + 1])))
+        for l in range(len(self.layers_size) - 2):
 
-            elif args.dropoutModule == 'dropConnect' :
-                self.layers.add_module(f'DropConnect_layer_{l + 1}',
-                                       CustomDropout(in_features=int(layers_size[l]),out_features=int(layers_size[l + 1]),
-                                                    weight_dropout=float(drop_p[l])))
+            if args.dropoutModule == 'dropConnect':
+                    self.layers.add_module(f'dropConnect_{l + 1}',
+                                           CustomDropout(float(self.drop_p[l]), self.layers_size, l))
             else:
                 self.layers.add_module(f'linear_layer_{l + 1}',
-                                       torch.nn.Linear(int(layers_size[l]), int(layers_size[l + 1])))
+                                       torch.nn.Linear(int(self.layers_size[l]), int(self.layers_size[l + 1])))
 
             self.layers.add_module(f'LeakyReLU_layer_{l + 1}',
                                    torch.nn.LeakyReLU())
 
-            if args.dropoutModule == 'advancedDropout' and l < 2:
-                self.layers.add_module(f'advanceDropout_layer_{l + 1}',
-                                       CustomDropout(int(layers_size[l + 1])))
+            if args.dropoutModule != "noDrop" and args.dropoutModule != "dropConnect":
+                self.layers.add_module(f'{args.dropoutModule}_{l + 1}',
+                                       CustomDropout(float(self.drop_p[l]), self.layers_size, l))
 
         self.layers.add_module("last_linear_layer",
-                               torch.nn.Linear(int(layers_size[-2]), int(layers_size[-1])))
+                               torch.nn.Linear(int(self.layers_size[-2]), int(self.layers_size[-1])))
 
     def forward(self, x):
         y_prim = self.layers.forward(x)
@@ -175,6 +180,7 @@ class Model(torch.nn.Module):
 model = Model(layers_size=args.layers_size,
               drop_p=args.drop_p)
 model.to(device)
+
 if args.dropoutModule == 'advancedDropout':
     dp_params = []
     res_params = []
@@ -199,24 +205,40 @@ else:
         lr=float(args.lr)
     )
 
+def R2_score(y_true, y_pred):
+    numerator = ((y_true - y_pred) ** 2).sum(axis=0, dtype=np.float64)
+    denominator = ( (y_true - total_avg_y) ** 2).sum(axis=0, dtype=np.float64)
+    nonzero_denominator = denominator != 0
+    nonzero_numerator = numerator != 0
+    valid_score = nonzero_denominator & nonzero_numerator
+    output_scores = np.ones([y_true.shape[1]])
+    output_scores[valid_score] = 1 - (numerator[valid_score] / denominator[valid_score])
+
+    return output_scores
+
+
 best_loss_test = []
 best_R2_test = []
 losses_train = []
 losses_test = []
-R2_train = []
-R2_test = []
+R2s_train = []
+R2s_test = []
 metrics_mean_dict = {'loss_train': None,
                      'R^2_train': None,
+
                      'loss_test': 0,
                      'R^2_test': 0,
+
                      'best_loss_test': 0,
-                     'best_R^2_test': 0
+                     'best_R^2_test': 0,
+
                      }
+
 for epoch in range(int(args.epoch)):
+    logging.warning(f"epochs left: {int(args.epoch) - epoch} ")
 
     for dataloader in [dataloader_train, dataloader_test]:
-        losses = []
-        R2_s = []
+
         if dataloader is dataloader_test:
             model.eval()
             mode = 'test'
@@ -227,30 +249,38 @@ for epoch in range(int(args.epoch)):
         metrics_mean_dict[f'loss_{mode}'] = []
         metrics_mean_dict[f'R^2_{mode}'] = []
 
+
+        pred_y_prim = []
+        pred_y = []
+        losses = []
+        r2s = []
+
         for x, y in tqdm(dataloader, desc=mode):
 
             x = torch.FloatTensor(x.float()).to(device)
             y = torch.FloatTensor(y.float()).to(device)
             y_prim = (model.forward(x))
-
             loss = torch.mean(torch.abs(y - y_prim))
             R2 = sklearn.metrics.r2_score(y.detach().cpu(), y_prim.detach().cpu())
-
-            metrics_mean_dict[f'loss_{mode}'].append(loss)
-            metrics_mean_dict[f'R^2_{mode}'].append(R2)
-
-            losses.append(loss.item())
-            R2_s.append(R2.item())
-
-            if dataloader is dataloader_train:
+            if model.training:
                 loss.backward()
                 opt.step()
                 opt.zero_grad()
 
+            pred_y.append(np.array(y.detach().cpu().numpy()))
+            pred_y_prim.append(np.array(y_prim.detach().cpu().numpy()))
+            metrics_mean_dict[f'loss_{mode}'].append(loss.item())
+            losses.append(loss.item())
+
+
+        for i in range(len(pred_y)):
+            r2 = R2_score(pred_y[i], pred_y_prim[i])
+            r2s.append(r2)
+
+
         metrics_mean_dict[f'loss_{mode}'] = round((torch.mean(torch.FloatTensor(metrics_mean_dict[f'loss_{mode}'])))
                                                   .numpy().item(), 4)
-        metrics_mean_dict[f'R^2_{mode}'] = round((torch.mean(torch.FloatTensor(metrics_mean_dict[f'R^2_{mode}'])))
-                                                 .numpy().item(), 4)
+        metrics_mean_dict[f'R^2_{mode}'] = round(np.mean(r2s).item(), 4)
 
         if dataloader is dataloader_test:
             best_loss_test.append(metrics_mean_dict['loss_test'])
@@ -258,8 +288,10 @@ for epoch in range(int(args.epoch)):
             metrics_mean_dict['best_loss_test'] = min(best_loss_test)
             metrics_mean_dict['best_R^2_test'] = max(best_R2_test)
 
+
         csv_utils_2.CsvUtils2.add_hparams(
             path_sequence,
+            path_overall_results,
             args.run_name,
             args.__dict__,
             metrics_mean_dict,
@@ -267,10 +299,12 @@ for epoch in range(int(args.epoch)):
         )
         if dataloader is dataloader_train:
             losses_train.append(np.mean(losses))
-            R2_train.append(np.mean(R2_s))
+
+            R2s_train.append(np.mean(r2s))
         else:
             losses_test.append(np.mean(losses))
-            R2_test.append(np.mean(R2_s))
+
+            R2s_test.append(np.mean(r2s))
 
 name = ""
 for string in args.run_name:
@@ -284,15 +318,30 @@ sample_file_name = f"sample"
 if not os.path.isdir(results_dir):
     os.makedirs(results_dir)
 
-plt.subplot(2, 1, 1)
-plt.title('loss')
-plt.plot(losses_train, label="loss_trian")
-plt.plot(losses_test, label="loss_test")
-plt.legend(loc='upper right', shadow=False, fontsize='medium')
+moving_averages_train = pd.DataFrame(losses_train).rolling(3, min_periods=1).mean()
+moving_averages_test = pd.DataFrame(losses_test).rolling(3, min_periods=1).mean()
+my_dpi = 72
+fig, axes = plt.subplots(nrows=3, ncols=1, figsize=(15, 15), dpi=my_dpi)
 
-plt.subplot(2, 1, 2)
-plt.title('R2')
-plt.plot(R2_train, label="R2_trian")
-plt.plot(R2_test, label="R2_test")
-plt.legend(loc='lower right', shadow=False, fontsize='medium')
+axes[0].set_title('Simple Moving Average of Loss', fontsize=14)
+axes[0].plot(moving_averages_train, label="loss_trian")
+axes[0].plot(moving_averages_test, label="loss_test")
+axes[0].set_xlabel('Epochs', fontsize=14)
+axes[0].legend(loc='upper right', shadow=False, fontsize='medium')
+
+
+axes[1].set_title('R2_log', fontsize=14)
+axes[1].plot(R2s_train, label="R2s_trian")
+axes[1].plot(R2s_test, label="R2s_test")
+axes[1].set_yscale('log')
+axes[1].set_xlabel('Epochs', fontsize=14)
+axes[1].legend(loc='lower right', shadow=False, fontsize='medium')
+
+moving_averages_train_r2s = pd.DataFrame(R2s_train).rolling(3, min_periods=1).mean()
+moving_averages_test_r2s = pd.DataFrame(R2s_test).rolling(3, min_periods=1).mean()
+axes[2].set_title('R2_MEAN_of_3', fontsize=14)
+axes[2].plot(moving_averages_train_r2s, label="R2s_trian")
+axes[2].plot(moving_averages_test_r2s, label="R2s_test")
+axes[2].set_xlabel('Epochs', fontsize=14)
+axes[2].legend(loc='lower right', shadow=False, fontsize='medium')
 plt.savefig(results_dir + last + sample_file_name)
