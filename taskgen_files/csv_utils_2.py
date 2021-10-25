@@ -29,11 +29,11 @@ class CsvUtils2():
                 csv_file.write('')
 
     @staticmethod
-    def add_hparams(path_sequence, run_name, args_dict, metrics_dict, global_step):
+    def add_hparams(path_sequence, path_overall_results, run_name, args_dict, metrics_dict, global_step):
         try:
             path_local_csv = f'{path_sequence}/{run_name}.csv'
             path_global_csv = f'{path_sequence}/sequence-{os.path.basename(path_sequence)}.csv'
-            path_overall_csv = f'./results/sequence-overall.csv'
+            path_overall_csv = f'{path_overall_results}/sequence-overall.csv'
 
             args_dict = copy.copy(args_dict)
             metrics_dict = copy.copy(metrics_dict)
