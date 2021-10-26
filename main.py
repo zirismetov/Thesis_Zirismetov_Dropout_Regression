@@ -33,7 +33,7 @@ parser.add_argument('-is_debug',
 args, args_other = parser.parse_known_args()
 args = args_utils.ArgsUtils.add_other_args(args, args_other)
 args.sequence_name_orig = str(args.sequence_name[0])
-args.sequence_name += ('-' + datetime.utcnow().strftime(f'%y-%m-%d-%H-%M-%S'))
+args.sequence_name += ('-'+ f'{args.dropoutModule}-' + datetime.utcnow().strftime(f'%y-%m-%d-%H-%M-%S'))
 
 removebrac = ['[', ']', "'", '"']
 for key in args.__dict__:
@@ -55,12 +55,13 @@ args.layers_size = ''.join(args.layers_size)
 if args.dropoutModule != 'advancedDropout':
     args.drop_p = ''.join(args.drop_p)
 
-path_sequence = f'./results/{args.sequence_name}'
-args.run_name += ('-' + datetime.utcnow().strftime(f'%y-%m-%d--%H-%M-%S'))
-path_run = f'./results/{args.sequence_name}/{args.run_name}'
+path_sequence = f'./results/{args.sequence_name_orig}/{args.sequence_name}'
+args.run_name += ('-' + f'{args.dropoutModule}-' + datetime.utcnow().strftime(f'%y-%m-%d--%H-%M-%S'))
+# path_run = f'./{path_sequence}/{args.run_name}'
 path_overall_results = f'./results/{args.sequence_name_orig}'
-file_utils.FileUtils.createDir(path_run)
-file_utils.FileUtils.writeJSON(f'{path_run}/args.json', args.__dict__)
+# file_utils.FileUtils.createDir(path_run)
+file_utils.FileUtils.createDir(path_sequence)
+file_utils.FileUtils.writeJSON(f'{path_sequence}/args.json', args.__dict__)
 csv_utils_2.CsvUtils2.create_global(path_sequence)
 csv_utils_2.CsvUtils2.createOverall(path_overall_results)
 csv_utils_2.CsvUtils2.create_local(path_sequence, args.run_name)
@@ -75,21 +76,18 @@ class LoadDataset(torch.utils.data.Dataset):
             data_raw = pd.read_csv('datasets/CalCOFI.csv', low_memory=False)
             # Predict temperature of water 1 features: salinity
             data_raw = data_raw[['Salnty', 'Depthm', 'T_degC']]
-            data_raw['Salnty'].replace(0, np.nan, inplace=True)
-            # data_raw['Depthm'].replace(0, np.nan, inplace=True)
-            data_raw['T_degC'].replace(0, np.nan, inplace=True)
-            data_raw.fillna(method='pad', inplace=True)
 
             self.X = data_raw[['Salnty', 'Depthm']].copy().to_numpy()
             np_x = np.copy(self.X)
-            for i in range(np_x.shape[-1]):
-                self.X[:, i] = ((np_x[:, i] - np.min(np_x[:, i])) / (np.max(np_x[:, i]) - np.min(np_x[:, i])))
-            # self.X[:] = ((np_x[:] - np.min(np_x[:])) / (np.max(np_x[:]) - np.min(np_x[:]))) + 1
-            # self.X = np.expand_dims(self.X, axis=1)
+            nans, z = np.isnan(np_x), lambda z: z.nonzero()[0]
+            np_x[nans] = np.interp(z(nans), z(~nans), np_x[~nans])
+            self.X = (np_x - np.mean(np_x, axis=0))/np.std(np_x, axis=0)
 
             self.y = data_raw['T_degC'].to_numpy()
             np_y = np.copy(self.y)
-            self.y[:] = ((np_y[:] - np.min(np_y[:])) / (np.max(np_y[:]) - np.min(np_y[:])))
+            nans, z = np.isnan(np_y), lambda z: z.nonzero()[0]
+            np_y[nans] = np.interp(z(nans), z(~nans), np_y[~nans])
+            self.y = (np_y - np.mean(np_y, axis=0))/np.std(np_y, axis=0)
             self.y = np.expand_dims(self.y, axis=1)
             total_avg_y = np.average(self.y, axis=0)
         else:
@@ -98,22 +96,15 @@ class LoadDataset(torch.utils.data.Dataset):
             data_raw['Pressure (millibars)'].replace(0, np.nan, inplace=True)
             data_raw.fillna(method='pad', inplace=True)
 
-            # Predict Weather with 2 features: Humidity and Pressure
-            # data_X = data_raw.drop(['Formatted Date', 'Summary', 'Precip Type', 'Daily Summary',
-            #                         'Apparent Temperature (C)', 'Temperature (C)', 'Visibility (km)',
-            #                         'Wind Bearing (degrees)', 'Wind Speed (km/h)'], axis=1)
             self.X = data_raw[['Wind Speed (km/h)', 'Humidity', 'Wind Bearing (degrees)']].to_numpy()
             np_x = np.copy(self.X)
-            for i in range(np_x.shape[-1]):
-                self.X[:, i] = ((np_x[:, i] - np.min(np_x[:, i])) / (np.max(np_x[:, i]) - np.min(np_x[:, i])))
-            # self.X[:] = ((np_x[:] - np.min(np_x[:])) / (np.max(np_x[:]) - np.min(np_x[:]))) + 1
-            # self.X = np.expand_dims(self.X, axis=1)
+            self.X = (np_x - np.mean(np_x, axis=0))/np.std(np_x, axis=0)
 
             self.y = data_raw['Temperature (C)'].to_numpy()
             np_y = np.copy(self.y)
-            self.y[:] = ((np_y[:] - np.min(np_y[:])) / (np.max(np_y[:]) - np.min(np_y[:])))
+            self.y = (np_y - np.mean(np_y, axis=0))/np.std(np_y, axis=0)
             self.y = np.expand_dims(self.y, axis=1)
-            total_avg_y = np.average(self.y)
+            total_avg_y = np.average(self.y, axis=0)
 
     def __len__(self):
         if args.is_debug:
@@ -216,7 +207,7 @@ def R2_score(y_true, y_pred):
     output_scores = np.ones([y_true.shape[1]])
     output_scores[valid_score] = 1 - (numerator[valid_score] / denominator[valid_score])
 
-    return output_scores
+    return float(output_scores)
 
 
 best_loss_test = []
@@ -249,10 +240,9 @@ for epoch in range(int(args.epoch)):
         metrics_mean_dict[f'loss_{mode}'] = []
         metrics_mean_dict[f'R^2_{mode}'] = []
 
-        pred_y_prim = []
-        pred_y = []
+        np_y_prim = []
+        np_y = []
         losses = []
-        r2s = []
 
         for x, y in tqdm(dataloader, desc=mode):
 
@@ -266,18 +256,23 @@ for epoch in range(int(args.epoch)):
                 opt.step()
                 opt.zero_grad()
 
-            pred_y.append(np.array(y.detach().cpu().numpy()))
-            pred_y_prim.append(np.array(y_prim.detach().cpu().numpy()))
+            np_y += y.detach().cpu().numpy().tolist()
+            np_y_prim += y_prim.detach().cpu().numpy().tolist()
             metrics_mean_dict[f'loss_{mode}'].append(loss.item())
             losses.append(loss.item())
 
-        for i in range(len(pred_y)):
-            r2 = R2_score(pred_y[i], pred_y_prim[i])
-            r2s.append(r2)
+        # for i in range(len(pred_y)):
+        np_y = np.vstack(np_y)
+        np_y_prim = np.vstack(np_y_prim)
+
+        # np_y  = np.array(sum(np_y, []))
+        # np_y_prim  = np.array(sum(np_y_prim, []))
+        # r2 = R2_score(np_y, np_y_prim)
+        r2 = R2_score(np_y, np_y_prim)
 
         metrics_mean_dict[f'loss_{mode}'] = round((torch.mean(torch.FloatTensor(metrics_mean_dict[f'loss_{mode}'])))
                                                   .numpy().item(), 4)
-        metrics_mean_dict[f'R^2_{mode}'] = round(np.mean(r2s).item(), 4)
+        metrics_mean_dict[f'R^2_{mode}'] = round(r2, 4)
 
         if dataloader is dataloader_test:
             best_loss_test.append(metrics_mean_dict['loss_test'])
@@ -295,17 +290,17 @@ for epoch in range(int(args.epoch)):
         )
         if dataloader is dataloader_train:
             losses_train.append(np.mean(losses))
-            R2s_train.append(np.mean(r2s))
+            R2s_train.append(r2)
         else:
             losses_test.append(np.mean(losses))
-            R2s_test.append(np.mean(r2s))
+            R2s_test.append(r2)
 
 name = ""
 for string in args.run_name:
     string = string.replace("-", "")
     name += string
 last = name[-6:]
-script_dir = path_run
+script_dir = path_sequence
 results_dir = os.path.join(script_dir, 'Results_img/')
 sample_file_name = f"sample"
 

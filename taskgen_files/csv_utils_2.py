@@ -10,16 +10,16 @@ class CsvUtils2():
 
     @staticmethod
     def create_global(path_sequence):
-        if not os.path.exists(f'{path_sequence}/sequence-{os.path.basename(path_sequence)}.csv'):
-            with open(f'{path_sequence}/sequence-{os.path.basename(path_sequence)}.csv', mode='w') as csv_file:
+        if not os.path.exists(f'{path_sequence}/last_row-{os.path.basename(path_sequence)}.csv'):
+            with open(f'{path_sequence}/last_row-{os.path.basename(path_sequence)}.csv', mode='w') as csv_file:
                 csv_file.write('')
 
     @staticmethod
     def createOverall(path_sequence):
-        if os.path.exists(f'{path_sequence}/sequence-overall.csv'):
+        if os.path.exists(f'{path_sequence}/overall_results.csv'):
             return
         else:
-            with open(f'{path_sequence}/sequence-overall.csv', mode='w') as csv_file:
+            with open(f'{path_sequence}/overall_results.csv', mode='w') as csv_file:
                 csv_file.write('')
     # results for each test instance/task
     @staticmethod
@@ -32,8 +32,8 @@ class CsvUtils2():
     def add_hparams(path_sequence, path_overall_results, run_name, args_dict, metrics_dict, global_step):
         try:
             path_local_csv = f'{path_sequence}/{run_name}.csv'
-            path_global_csv = f'{path_sequence}/sequence-{os.path.basename(path_sequence)}.csv'
-            path_overall_csv = f'{path_overall_results}/sequence-overall.csv'
+            path_global_csv = f'{path_sequence}/last_row-{os.path.basename(path_sequence)}.csv'
+            path_overall_csv = f'{path_overall_results}/overall_results.csv'
 
             args_dict = copy.copy(args_dict)
             metrics_dict = copy.copy(metrics_dict)
