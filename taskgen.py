@@ -14,11 +14,8 @@ from sklearn.model_selection import ParameterGrid
 import subprocess
 import json
 import numpy as np
-from  multiprocessing import Pool
-print(torch.cuda.device_count())
-print(torch.cuda.current_device())
-print(torch.cuda.get_device_name(torch.cuda.current_device()))
-print(torch.cuda.is_available())
+
+
 parser = argparse.ArgumentParser(description="CalCOFI hypermarkets")
 parser.add_argument('-sequence_name', type=str, default='sequence')
 parser.add_argument('-run_name', type=str, default=str(time.time()))

@@ -10,11 +10,12 @@ import torch.utils.data
 from sklearn.model_selection import train_test_split
 import argparse
 import time
-
+from sklearn.experimental import enable_iterative_imputer
+from sklearn.impute import IterativeImputer
 from datetime import datetime
 from tqdm import tqdm
 
-sys.path.append('C:/Users/Kekuzbek/PycharmProjects/Thesis_Zirismetov_Dropout_Regression/taskgen_files')
+sys.path.append('taskgen_files')
 import csv_utils_2
 import file_utils
 import args_utils
@@ -33,7 +34,7 @@ parser.add_argument('-is_debug',
 args, args_other = parser.parse_known_args()
 args = args_utils.ArgsUtils.add_other_args(args, args_other)
 args.sequence_name_orig = str(args.sequence_name[0])
-args.sequence_name += ('-' + datetime.utcnow().strftime(f'%y-%m-%d-%H-%M-%S'))
+args.sequence_name += ('-'+ f'{args.dropoutModule}-' + datetime.utcnow().strftime(f'%y-%m-%d-%H-%M-%S'))
 
 removebrac = ['[', ']', "'", '"']
 for key in args.__dict__:
@@ -55,17 +56,19 @@ args.layers_size = ''.join(args.layers_size)
 if args.dropoutModule != 'advancedDropout':
     args.drop_p = ''.join(args.drop_p)
 
-path_sequence = f'./results/{args.sequence_name}'
-args.run_name += ('-' + datetime.utcnow().strftime(f'%y-%m-%d--%H-%M-%S'))
-path_run = f'./results/{args.sequence_name}/{args.run_name}'
+path_sequence = f'./results/{args.sequence_name_orig}/{args.sequence_name}'
+args.run_name += ('-' + f'{args.dropoutModule}-' + datetime.utcnow().strftime(f'%y-%m-%d--%H-%M-%S'))
+# path_run = f'./{path_sequence}/{args.run_name}'
 path_overall_results = f'./results/{args.sequence_name_orig}'
-file_utils.FileUtils.createDir(path_run)
-file_utils.FileUtils.writeJSON(f'{path_run}/args.json', args.__dict__)
+# file_utils.FileUtils.createDir(path_run)
+file_utils.FileUtils.createDir(path_sequence)
+file_utils.FileUtils.writeJSON(f'{path_sequence}/args.json', args.__dict__)
 csv_utils_2.CsvUtils2.create_global(path_sequence)
 csv_utils_2.CsvUtils2.createOverall(path_overall_results)
 csv_utils_2.CsvUtils2.create_local(path_sequence, args.run_name)
 
 total_avg_y = 0
+imputer = IterativeImputer()
 
 class LoadDataset(torch.utils.data.Dataset):
     def __init__(self):
@@ -74,22 +77,29 @@ class LoadDataset(torch.utils.data.Dataset):
             data_raw = pd.read_csv('datasets/CalCOFI.csv', low_memory=False)
             # Predict temperature of water 1 features: salinity
             data_raw = data_raw[['Salnty', 'Depthm', 'T_degC']]
-            data_raw['Salnty'].replace(0, np.nan, inplace=True)
-            # data_raw['Depthm'].replace(0, np.nan, inplace=True)
-            data_raw['T_degC'].replace(0, np.nan, inplace=True)
-            data_raw.fillna(method='pad', inplace=True)
 
             self.X = data_raw[['Salnty', 'Depthm']].copy().to_numpy()
             np_x = np.copy(self.X)
-            for i in range(np_x.shape[-1]):
-                self.X[:, i] = ((np_x[:, i] - np.min(np_x[:, i])) / (np.max(np_x[:, i]) - np.min(np_x[:, i])))
-            # self.X[:] = ((np_x[:] - np.min(np_x[:])) / (np.max(np_x[:]) - np.min(np_x[:]))) + 1
-            # self.X = np.expand_dims(self.X, axis=1)
+            imputer.fit(np_x)
+            np_x_trans = imputer.transform(np_x)
+            # nans, z = np.isnan(np_x), lambda z: z.nonzero()[0]
+            # np_x[nans] = np.interp(z(nans), z(~nans), np_x[~nans])
+            # col_mean = np.nanmean(np_x, axis=0)
+            # inds = np.where(np.isnan(np_x))
+            # np_x[inds] = np.take(col_mean, inds[1])
+            self.X = (np_x_trans - np.mean(np_x_trans, axis=0))/np.std(np_x_trans, axis=0)
 
             self.y = data_raw['T_degC'].to_numpy()
             np_y = np.copy(self.y)
-            self.y[:] = ((np_y[:] - np.min(np_y[:])) / (np.max(np_y[:]) - np.min(np_y[:])))
-            self.y = np.expand_dims(self.y, axis=1)
+            np_y = np.expand_dims(np_y, axis=1)
+        # nans, z = np.isnan(np_y), lambda z: z.nonzero()[0]
+            # np_y[nans] = np.interp(z(nans), z(~nans), np_y[~nans])
+            # col_mean = np.nanmean(np_y, axis=0)
+            # inds = np.where(np.isnan(np_y))
+            # np_y[inds] = col_mean
+            imputer.fit(np_y)
+            np_y_trans = imputer.transform(np_y)
+            self.y = (np_y_trans - np.mean(np_y_trans, axis=0))/np.std(np_y_trans, axis=0)
             total_avg_y = np.average(self.y, axis=0)
         else:
             data_raw = pd.read_csv('datasets/weatherHistory.csv')
@@ -97,26 +107,19 @@ class LoadDataset(torch.utils.data.Dataset):
             data_raw['Pressure (millibars)'].replace(0, np.nan, inplace=True)
             data_raw.fillna(method='pad', inplace=True)
 
-            # Predict Weather with 2 features: Humidity and Pressure
-            # data_X = data_raw.drop(['Formatted Date', 'Summary', 'Precip Type', 'Daily Summary',
-            #                         'Apparent Temperature (C)', 'Temperature (C)', 'Visibility (km)',
-            #                         'Wind Bearing (degrees)', 'Wind Speed (km/h)'], axis=1)
             self.X = data_raw[['Wind Speed (km/h)', 'Humidity', 'Wind Bearing (degrees)']].to_numpy()
             np_x = np.copy(self.X)
-            for i in range(np_x.shape[-1]):
-                self.X[:, i] = ((np_x[:, i] - np.min(np_x[:, i])) / (np.max(np_x[:, i]) - np.min(np_x[:, i])))
-            # self.X[:] = ((np_x[:] - np.min(np_x[:])) / (np.max(np_x[:]) - np.min(np_x[:]))) + 1
-            # self.X = np.expand_dims(self.X, axis=1)
+            self.X = (np_x - np.mean(np_x, axis=0))/np.std(np_x, axis=0)
 
             self.y = data_raw['Temperature (C)'].to_numpy()
             np_y = np.copy(self.y)
-            self.y[:] = ((np_y[:] - np.min(np_y[:])) / (np.max(np_y[:]) - np.min(np_y[:])))
+            self.y = (np_y - np.mean(np_y, axis=0))/np.std(np_y, axis=0)
             self.y = np.expand_dims(self.y, axis=1)
-            total_avg_y = np.average(self.y)
+            total_avg_y = np.average(self.y, axis=0)
 
     def __len__(self):
         if args.is_debug:
-            return 500
+            return 100
         return len(self.y)
 
     def __getitem__(self, item):
@@ -156,8 +159,8 @@ class Model(torch.nn.Module):
         for l in range(len(self.layers_size) - 2):
 
             if args.dropoutModule == 'dropConnect':
-                    self.layers.add_module(f'dropConnect_{l + 1}',
-                                           CustomDropout(float(self.drop_p[l]), self.layers_size, l))
+                self.layers.add_module(f'dropConnect_{l + 1}',
+                                       CustomDropout(float(self.drop_p[l]), self.layers_size, l))
             else:
                 self.layers.add_module(f'linear_layer_{l + 1}',
                                        torch.nn.Linear(int(self.layers_size[l]), int(self.layers_size[l + 1])))
@@ -205,16 +208,17 @@ else:
         lr=float(args.lr)
     )
 
+
 def R2_score(y_true, y_pred):
     numerator = ((y_true - y_pred) ** 2).sum(axis=0, dtype=np.float64)
-    denominator = ( (y_true - total_avg_y) ** 2).sum(axis=0, dtype=np.float64)
+    denominator = ((y_true - total_avg_y) ** 2).sum(axis=0, dtype=np.float64)
     nonzero_denominator = denominator != 0
     nonzero_numerator = numerator != 0
     valid_score = nonzero_denominator & nonzero_numerator
     output_scores = np.ones([y_true.shape[1]])
     output_scores[valid_score] = 1 - (numerator[valid_score] / denominator[valid_score])
 
-    return output_scores
+    return float(output_scores)
 
 
 best_loss_test = []
@@ -224,11 +228,9 @@ losses_test = []
 R2s_train = []
 R2s_test = []
 metrics_mean_dict = {'loss_train': None,
-                     'R^2_train': None,
-
                      'loss_test': 0,
+                     'R^2_train': None,
                      'R^2_test': 0,
-
                      'best_loss_test': 0,
                      'best_R^2_test': 0,
 
@@ -249,11 +251,9 @@ for epoch in range(int(args.epoch)):
         metrics_mean_dict[f'loss_{mode}'] = []
         metrics_mean_dict[f'R^2_{mode}'] = []
 
-
-        pred_y_prim = []
-        pred_y = []
+        np_y_prim = []
+        np_y = []
         losses = []
-        r2s = []
 
         for x, y in tqdm(dataloader, desc=mode):
 
@@ -261,33 +261,35 @@ for epoch in range(int(args.epoch)):
             y = torch.FloatTensor(y.float()).to(device)
             y_prim = (model.forward(x))
             loss = torch.mean(torch.abs(y - y_prim))
-            R2 = sklearn.metrics.r2_score(y.detach().cpu(), y_prim.detach().cpu())
+
             if model.training:
                 loss.backward()
                 opt.step()
                 opt.zero_grad()
 
-            pred_y.append(np.array(y.detach().cpu().numpy()))
-            pred_y_prim.append(np.array(y_prim.detach().cpu().numpy()))
+            np_y += y.detach().cpu().numpy().tolist()
+            np_y_prim += y_prim.detach().cpu().numpy().tolist()
             metrics_mean_dict[f'loss_{mode}'].append(loss.item())
             losses.append(loss.item())
 
+        # for i in range(len(pred_y)):
+        np_y = np.vstack(np_y)
+        np_y_prim = np.vstack(np_y_prim)
 
-        for i in range(len(pred_y)):
-            r2 = R2_score(pred_y[i], pred_y_prim[i])
-            r2s.append(r2)
-
+        # np_y  = np.array(sum(np_y, []))
+        # np_y_prim  = np.array(sum(np_y_prim, []))
+        # r2 = R2_score(np_y, np_y_prim)
+        r2 = R2_score(np_y, np_y_prim)
 
         metrics_mean_dict[f'loss_{mode}'] = round((torch.mean(torch.FloatTensor(metrics_mean_dict[f'loss_{mode}'])))
                                                   .numpy().item(), 4)
-        metrics_mean_dict[f'R^2_{mode}'] = round(np.mean(r2s).item(), 4)
+        metrics_mean_dict[f'R^2_{mode}'] = round(r2, 4)
 
         if dataloader is dataloader_test:
             best_loss_test.append(metrics_mean_dict['loss_test'])
             best_R2_test.append(metrics_mean_dict['R^2_test'])
             metrics_mean_dict['best_loss_test'] = min(best_loss_test)
             metrics_mean_dict['best_R^2_test'] = max(best_R2_test)
-
 
         csv_utils_2.CsvUtils2.add_hparams(
             path_sequence,
@@ -299,19 +301,17 @@ for epoch in range(int(args.epoch)):
         )
         if dataloader is dataloader_train:
             losses_train.append(np.mean(losses))
-
-            R2s_train.append(np.mean(r2s))
+            R2s_train.append(r2)
         else:
             losses_test.append(np.mean(losses))
-
-            R2s_test.append(np.mean(r2s))
+            R2s_test.append(r2)
 
 name = ""
 for string in args.run_name:
     string = string.replace("-", "")
     name += string
 last = name[-6:]
-script_dir = path_run
+script_dir = path_sequence
 results_dir = os.path.join(script_dir, 'Results_img/')
 sample_file_name = f"sample"
 
@@ -320,28 +320,26 @@ if not os.path.isdir(results_dir):
 
 moving_averages_train = pd.DataFrame(losses_train).rolling(3, min_periods=1).mean()
 moving_averages_test = pd.DataFrame(losses_test).rolling(3, min_periods=1).mean()
-my_dpi = 72
-fig, axes = plt.subplots(nrows=3, ncols=1, figsize=(15, 15), dpi=my_dpi)
+fig, axes = plt.subplots(nrows=3, ncols=1, figsize=(10, 10), dpi=100)
 
-axes[0].set_title('Simple Moving Average of Loss', fontsize=14)
+axes[0].set_title('Simple Moving Average of Loss', fontsize=12)
 axes[0].plot(moving_averages_train, label="loss_trian")
 axes[0].plot(moving_averages_test, label="loss_test")
-axes[0].set_xlabel('Epochs', fontsize=14)
+axes[0].set_xlabel('Epochs', fontsize=12)
 axes[0].legend(loc='upper right', shadow=False, fontsize='medium')
 
-
-axes[1].set_title('R2_log', fontsize=14)
+axes[1].set_title('R2_log', fontsize=12)
 axes[1].plot(R2s_train, label="R2s_trian")
 axes[1].plot(R2s_test, label="R2s_test")
 axes[1].set_yscale('log')
-axes[1].set_xlabel('Epochs', fontsize=14)
+axes[1].set_xlabel('Epochs', fontsize=12)
 axes[1].legend(loc='lower right', shadow=False, fontsize='medium')
 
 moving_averages_train_r2s = pd.DataFrame(R2s_train).rolling(3, min_periods=1).mean()
 moving_averages_test_r2s = pd.DataFrame(R2s_test).rolling(3, min_periods=1).mean()
-axes[2].set_title('R2_MEAN_of_3', fontsize=14)
+axes[2].set_title('R2_MEAN_of_3', fontsize=12)
 axes[2].plot(moving_averages_train_r2s, label="R2s_trian")
 axes[2].plot(moving_averages_test_r2s, label="R2s_test")
-axes[2].set_xlabel('Epochs', fontsize=14)
+axes[2].set_xlabel('Epochs', fontsize=12)
 axes[2].legend(loc='lower right', shadow=False, fontsize='medium')
 plt.savefig(results_dir + last + sample_file_name)
