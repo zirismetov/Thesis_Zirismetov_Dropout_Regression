@@ -10,7 +10,8 @@ import torch.utils.data
 from sklearn.model_selection import train_test_split
 import argparse
 import time
-
+from sklearn.experimental import enable_iterative_imputer
+from sklearn.impute import IterativeImputer
 from datetime import datetime
 from tqdm import tqdm
 
@@ -67,8 +68,6 @@ csv_utils_2.CsvUtils2.createOverall(path_overall_results)
 csv_utils_2.CsvUtils2.create_local(path_sequence, args.run_name)
 
 total_avg_y = 0
-
-
 class LoadDataset(torch.utils.data.Dataset):
     def __init__(self):
         global total_avg_y
@@ -78,17 +77,24 @@ class LoadDataset(torch.utils.data.Dataset):
             data_raw = data_raw[['Salnty', 'Depthm', 'T_degC']]
 
             self.X = data_raw[['Salnty', 'Depthm']].copy().to_numpy()
-            np_x = np.copy(self.X)
-            nans, z = np.isnan(np_x), lambda z: z.nonzero()[0]
-            np_x[nans] = np.interp(z(nans), z(~nans), np_x[~nans])
-            self.X = (np_x - np.mean(np_x, axis=0))/np.std(np_x, axis=0)
-
             self.y = data_raw['T_degC'].to_numpy()
+
+            np_x = np.copy(self.X)
             np_y = np.copy(self.y)
-            nans, z = np.isnan(np_y), lambda z: z.nonzero()[0]
-            np_y[nans] = np.interp(z(nans), z(~nans), np_y[~nans])
-            self.y = (np_y - np.mean(np_y, axis=0))/np.std(np_y, axis=0)
-            self.y = np.expand_dims(self.y, axis=1)
+            np_y = np.expand_dims(np_y, axis=1)
+
+            nans = np.argwhere(np.isnan(np_x))
+            np_x = np.delete(np_x, nans, axis=0)
+            np_y = np.delete(np_y, nans, axis=0)
+
+            nans = np.argwhere(np.isnan(np_y))
+            np_x = np.delete(np_x, nans, axis=0)
+            np_y = np.delete(np_y, nans, axis=0)
+
+            # self.X = (np_x - np.mean(np_x, axis=0))/np.std(np_x, axis=0)
+            # self.y = (np_y - np.mean(np_y, axis=0))/np.std(np_y, axis=0)
+            self.X = np_x
+            self.y = np_y
             total_avg_y = np.average(self.y, axis=0)
         else:
             data_raw = pd.read_csv('datasets/weatherHistory.csv')
@@ -192,7 +198,7 @@ if args.dropoutModule == 'advancedDropout':
     opt = torch.optim.SGD([{'params': res_params, 'lr': float(args.lr)},
                            {'params': dp_params, 'lr': 1e-4}], momentum=0.9, weight_decay=5e-4)
 else:
-    opt = torch.optim.Adam(
+    opt = torch.optim.SGD(
         model.parameters(),
         lr=float(args.lr)
     )
