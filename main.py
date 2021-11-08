@@ -31,6 +31,42 @@ parser.add_argument('-is_debug',
                     default=False,
                     type=lambda x: (str(x).lower() == 'true'))
 
+parser.add_argument('-sequence_name',
+                    default='test_08',
+                    type=str)
+
+parser.add_argument('-dropoutModule',
+                    default='noDrop',
+                    type=str)
+
+parser.add_argument('-dataset',
+                    default='mining',
+                    type=str)
+
+parser.add_argument('-layers_size',
+                    default='22,128,128,128,1',
+                    type=str)
+
+parser.add_argument('-drop_p',
+                    default='0,0,0',
+                    type=str)
+
+parser.add_argument('-test_size',
+                    default=0.8,
+                    type=float)
+
+parser.add_argument('-lr',
+                    default=1e-3,
+                    type=float)
+
+parser.add_argument('-batch_size',
+                    default=32,
+                    type=int)
+
+parser.add_argument('-epoch',
+                    default=500,
+                    type=int)
+
 args, args_other = parser.parse_known_args()
 args = args_utils.ArgsUtils.add_other_args(args, args_other)
 args.sequence_name_orig = str(args.sequence_name[0])
@@ -57,7 +93,9 @@ if args.dropoutModule != 'advancedDropout':
     args.drop_p = ''.join(args.drop_p)
 
 path_sequence = f'./results/{args.sequence_name_orig}/{args.sequence_name}'
-args.run_name += ('-' + f'{args.dropoutModule}-' + datetime.utcnow().strftime(f'%y-%m-%d--%H-%M-%S'))
+# args.run_name += ('-' + f'{args.dropoutModule}-' + datetime.utcnow().strftime(f'%y-%m-%d--%H-%M-%S'))
+args.run_name = args.sequence_name + ('-' + f'{args.dropoutModule}-' + datetime.utcnow().strftime(f'%y-%m-%d--%H-%M-%S'))
+
 # path_run = f'./{path_sequence}/{args.run_name}'
 path_overall_results = f'./results/{args.sequence_name_orig}'
 # file_utils.FileUtils.createDir(path_run)
@@ -72,53 +110,85 @@ class LoadDataset(torch.utils.data.Dataset):
     def __init__(self):
         global total_avg_y
         if args.dataset == 'calcofi':
-            data_raw = pd.read_csv('datasets/CalCOFI.csv', low_memory=False)
+            df = pd.read_csv('datasets/CalCOFI.csv', low_memory=False)
             # Predict temperature of water 1 features: salinity
-            data_raw = data_raw[['Salnty', 'Depthm', 'T_degC']]
+            df = df[['Depthm', 'T_degC']]
 
-            self.X = data_raw[['Salnty', 'Depthm']].copy().to_numpy()
-            self.y = data_raw['T_degC'].to_numpy()
+            df.dropna(inplace=True)
 
-            np_x = np.copy(self.X)
-            np_y = np.copy(self.y)
+            np_x = df[['Depthm']].to_numpy().astype(np.float32)
+            np_y = df['T_degC'].to_numpy().astype(np.float32)
             np_y = np.expand_dims(np_y, axis=1)
-
-            nans = np.argwhere(np.isnan(np_x))
-            np_x = np.delete(np_x, nans, axis=0)
-            np_y = np.delete(np_y, nans, axis=0)
-
-            nans = np.argwhere(np.isnan(np_y))
-            np_x = np.delete(np_x, nans, axis=0)
-            np_y = np.delete(np_y, nans, axis=0)
 
             # self.X = (np_x - np.mean(np_x, axis=0))/np.std(np_x, axis=0)
             # self.y = (np_y - np.mean(np_y, axis=0))/np.std(np_y, axis=0)
             self.X = np_x
             self.y = np_y
-            total_avg_y = np.average(self.y, axis=0)
-        else:
-            data_raw = pd.read_csv('datasets/weatherHistory.csv')
-            data_raw.drop("Loud Cover", axis=1, inplace=True)
-            data_raw['Pressure (millibars)'].replace(0, np.nan, inplace=True)
-            data_raw.fillna(method='pad', inplace=True)
+            total_avg_y = np.mean(self.y)
 
-            self.X = data_raw[['Wind Speed (km/h)', 'Humidity', 'Wind Bearing (degrees)']].to_numpy()
-            np_x = np.copy(self.X)
+        elif args.dataset == 'weather':
+            df = pd.read_csv('datasets/weatherHistory.csv')
+            df = df[['Wind Speed (km/h)', 'Humidity', 'Wind Bearing (degrees)', 'Temperature (C)']]
+            df.dropna(inplace=True)
+
+            np_x = df[['Wind Speed (km/h)', 'Humidity', 'Wind Bearing (degrees)']].to_numpy().astype(np.float32)
+            np_y = df['Temperature (C)'].to_numpy().astype(np.float32)
+            np_y = np.expand_dims(np_y, axis=1)
+
+            self.X = np_x
+            # self.X = (np_x - np.mean(np_x, axis=0))/np.std(np_x, axis=0)
+
+            self.y = np_y
+            # self.y = (np_y - np.mean(np_y, axis=0))/np.std(np_y, axis=0)
+
+            total_avg_y = np.mean(self.y)
+
+        elif args.dataset == 'road':
+            pd.set_option('display.float_format', lambda x: '%.3f' % x)
+            df = pd.read_csv('datasets/road.csv')
+            new_df = df[['Duration','Distance', 'Temp', 'Wind', 'Humid', 'Dust']]
+
+            new_df.dropna(inplace=True)
+
+
+            np_x = new_df[['Distance', 'Temp', 'Wind', 'Humid', 'Dust']].to_numpy().astype(np.float32)
+            np_y = new_df['Duration'].to_numpy().astype(np.float32)
+            np_y = np.expand_dims(np_y, axis=1)
+
+            self.X = np_x
+            # self.X = (np_x - np.mean(np_x, axis=0))/np.std(np_x, axis=0)
+
+            self.y = np_y
+            # self.y = (np_y - np.mean(np_y, axis=0))/np.std(np_y, axis=0)
+
+            total_avg_y = np.mean(self.y)
+        elif args.dataset == 'mining':
+            pd.set_option('display.float_format', lambda x: '%.3f' % x)
+            df = pd.read_csv('datasets/mining.csv')
+
+            new_df = df.drop(['date'], axis=1)
+            new_df = new_df.stack().str.replace(',', '.').unstack()
+            new_df.dropna(inplace=True)
+
+            np_x = new_df.drop(['% Silica Concentrate'], axis=1).to_numpy().astype(np.float32)
+            np_y = new_df['% Silica Concentrate'].to_numpy().astype(np.float32)
+            np_y = np.expand_dims(np_y, axis=1)
+
+            # self.X = np_x
             self.X = (np_x - np.mean(np_x, axis=0))/np.std(np_x, axis=0)
 
-            self.y = data_raw['Temperature (C)'].to_numpy()
-            np_y = np.copy(self.y)
+            # self.y = np_y
             self.y = (np_y - np.mean(np_y, axis=0))/np.std(np_y, axis=0)
-            self.y = np.expand_dims(self.y, axis=1)
-            total_avg_y = np.average(self.y, axis=0)
+
+            total_avg_y = np.mean(self.y)
 
     def __len__(self):
         if args.is_debug:
-            return 100
+            return 500
         return len(self.y)
 
-    def __getitem__(self, item):
-        return self.X[item], self.y[item]
+    def __getitem__(self, idx):
+        return self.X[idx], self.y[idx]
 
 
 dataset = LoadDataset()
@@ -204,17 +274,12 @@ else:
     )
 
 
+
 def R2_score(y_true, y_pred):
-    numerator = ((y_true - y_pred) ** 2).sum(axis=0, dtype=np.float64)
-    denominator = ((y_true - total_avg_y) ** 2).sum(axis=0, dtype=np.float64)
-    nonzero_denominator = denominator != 0
-    nonzero_numerator = numerator != 0
-    valid_score = nonzero_denominator & nonzero_numerator
-    output_scores = np.ones([y_true.shape[1]])
-    output_scores[valid_score] = 1 - (numerator[valid_score] / denominator[valid_score])
-
-    return float(output_scores)
-
+    numerator = ((y_true - y_pred) ** 2).sum() + 1e-8
+    denominator = ((y_true - total_avg_y) ** 2).sum() + 1e-8
+    result = 1 - numerator / denominator
+    return result
 
 best_loss_test = []
 best_R2_test = []
@@ -222,9 +287,9 @@ losses_train = []
 losses_test = []
 R2s_train = []
 R2s_test = []
-metrics_mean_dict = {'loss_train': None,
+metrics_mean_dict = {'loss_train': 0,
                      'loss_test': 0,
-                     'R^2_train': None,
+                     'R^2_train': 0,
                      'R^2_test': 0,
                      'best_loss_test': 0,
                      'best_R^2_test': 0,
@@ -243,18 +308,15 @@ for epoch in range(int(args.epoch)):
             model.train()
             mode = 'train'
 
-        metrics_mean_dict[f'loss_{mode}'] = []
-        metrics_mean_dict[f'R^2_{mode}'] = []
-
         np_y_prim = []
         np_y = []
         losses = []
 
         for x, y in tqdm(dataloader, desc=mode):
 
-            x = torch.FloatTensor(x.float()).to(device)
-            y = torch.FloatTensor(y.float()).to(device)
-            y_prim = (model.forward(x))
+            x = x.to(device)
+            y = y.to(device)
+            y_prim = model.forward(x)
             loss = torch.mean(torch.abs(y - y_prim))
 
             if model.training:
@@ -262,25 +324,19 @@ for epoch in range(int(args.epoch)):
                 opt.step()
                 opt.zero_grad()
 
-            np_y += y.detach().cpu().numpy().tolist()
-            np_y_prim += y_prim.detach().cpu().numpy().tolist()
-            metrics_mean_dict[f'loss_{mode}'].append(loss.item())
+            np_y += y.detach().cpu().numpy().squeeze().tolist()
+            np_y_prim += y_prim.detach().cpu().numpy().squeeze().tolist()
+
             losses.append(loss.item())
 
-        # for i in range(len(pred_y)):
-        np_y = np.vstack(np_y)
-        np_y_prim = np.vstack(np_y_prim)
-
-        # np_y  = np.array(sum(np_y, []))
-        # np_y_prim  = np.array(sum(np_y_prim, []))
-        # r2 = R2_score(np_y, np_y_prim)
+        np_y = np.array(np_y)
+        np_y_prim = np.array(np_y_prim)
         r2 = R2_score(np_y, np_y_prim)
 
-        metrics_mean_dict[f'loss_{mode}'] = round((torch.mean(torch.FloatTensor(metrics_mean_dict[f'loss_{mode}'])))
-                                                  .numpy().item(), 4)
+        metrics_mean_dict[f'loss_{mode}'] = round(np.mean(losses), 4)
         metrics_mean_dict[f'R^2_{mode}'] = round(r2, 4)
 
-        if dataloader is dataloader_test:
+        if not model.training:
             best_loss_test.append(metrics_mean_dict['loss_test'])
             best_R2_test.append(metrics_mean_dict['R^2_test'])
             metrics_mean_dict['best_loss_test'] = min(best_loss_test)
@@ -294,12 +350,12 @@ for epoch in range(int(args.epoch)):
             metrics_mean_dict,
             epoch
         )
-        if dataloader is dataloader_train:
-            losses_train.append(np.mean(losses))
-            R2s_train.append(r2)
+        if model.training:
+            losses_train.append(metrics_mean_dict[f'loss_train'])
+            R2s_train.append(metrics_mean_dict[f'R^2_train'])
         else:
-            losses_test.append(np.mean(losses))
-            R2s_test.append(r2)
+            losses_test.append(metrics_mean_dict[f'loss_test'])
+            R2s_test.append(metrics_mean_dict[f'R^2_test'])
 
 name = ""
 for string in args.run_name:
@@ -315,7 +371,7 @@ if not os.path.isdir(results_dir):
 
 moving_averages_train = pd.DataFrame(losses_train).rolling(3, min_periods=1).mean()
 moving_averages_test = pd.DataFrame(losses_test).rolling(3, min_periods=1).mean()
-fig, axes = plt.subplots(nrows=3, ncols=1, figsize=(10, 10), dpi=100)
+fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(10, 10), dpi=100)
 
 axes[0].set_title('Simple Moving Average of Loss', fontsize=12)
 axes[0].plot(moving_averages_train, label="loss_trian")
@@ -323,18 +379,12 @@ axes[0].plot(moving_averages_test, label="loss_test")
 axes[0].set_xlabel('Epochs', fontsize=12)
 axes[0].legend(loc='upper right', shadow=False, fontsize='medium')
 
-axes[1].set_title('R2_log', fontsize=12)
-axes[1].plot(R2s_train, label="R2s_trian")
-axes[1].plot(R2s_test, label="R2s_test")
-axes[1].set_yscale('log')
+moving_averages_train_r2s = pd.DataFrame(R2s_train).rolling(3, min_periods=1).mean()
+moving_averages_test_r2s = pd.DataFrame(R2s_test).rolling(3, min_periods=1).mean()
+axes[1].set_title('R2', fontsize=12)
+axes[1].plot(moving_averages_train_r2s, label="R2s_trian")
+axes[1].plot(moving_averages_test_r2s, label="R2s_test")
 axes[1].set_xlabel('Epochs', fontsize=12)
 axes[1].legend(loc='lower right', shadow=False, fontsize='medium')
 
-moving_averages_train_r2s = pd.DataFrame(R2s_train).rolling(3, min_periods=1).mean()
-moving_averages_test_r2s = pd.DataFrame(R2s_test).rolling(3, min_periods=1).mean()
-axes[2].set_title('R2_MEAN_of_3', fontsize=12)
-axes[2].plot(moving_averages_train_r2s, label="R2s_trian")
-axes[2].plot(moving_averages_test_r2s, label="R2s_test")
-axes[2].set_xlabel('Epochs', fontsize=12)
-axes[2].legend(loc='lower right', shadow=False, fontsize='medium')
 plt.savefig(results_dir + last + sample_file_name)
