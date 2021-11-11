@@ -8,6 +8,7 @@ import os
 import sklearn.metrics
 import torch.utils.data
 from sklearn.model_selection import train_test_split
+from sklearn.datasets import fetch_california_housing
 import argparse
 import time
 from sklearn.experimental import enable_iterative_imputer
@@ -32,7 +33,7 @@ parser.add_argument('-is_debug',
                     type=lambda x: (str(x).lower() == 'true'))
 
 parser.add_argument('-sequence_name',
-                    default='test_08',
+                    default='mining-test-8_lowerererlr',
                     type=str)
 
 parser.add_argument('-dropoutModule',
@@ -56,20 +57,62 @@ parser.add_argument('-test_size',
                     type=float)
 
 parser.add_argument('-lr',
-                    default=1e-3,
+                    default=0.000001,
                     type=float)
 
 parser.add_argument('-batch_size',
-                    default=32,
+                    default=8,
                     type=int)
 
 parser.add_argument('-epoch',
-                    default=500,
+                    default=2500,
                     type=int)
+
+
+# parser.add_argument('-is_debug',
+#                     default=False,
+#                     type=lambda x: (str(x).lower() == 'true'))
+
+# parser.add_argument('-sequence_name',
+#                     default='sklearn04',
+#                     type=str)
+#
+# parser.add_argument('-dropoutModule',
+#                     default='noDrop',
+#                     type=str)
+#
+# parser.add_argument('-dataset',
+#                     default='houses',
+#                     type=str)
+#
+# parser.add_argument('-layers_size',
+#                     default='8,128,128,128,1',
+#                     type=str)
+#
+# parser.add_argument('-drop_p',
+#                     default='0,0,0',
+#                     type=str)
+#
+# parser.add_argument('-test_size',
+#                     default=0.4,
+#                     type=float)
+#
+# parser.add_argument('-lr',
+#                     default=0.001,
+#                     type=float)
+#
+# parser.add_argument('-batch_size',
+#                     default=8,
+#                     type=int)
+#
+# parser.add_argument('-epoch',
+#                     default=2500,
+#                     type=int)
+
 
 args, args_other = parser.parse_known_args()
 args = args_utils.ArgsUtils.add_other_args(args, args_other)
-args.sequence_name_orig = str(args.sequence_name[0])
+args.sequence_name_orig = str(args.sequence_name)
 args.sequence_name += ('-'+ f'{args.dropoutModule}-' + datetime.utcnow().strftime(f'%y-%m-%d-%H-%M-%S'))
 
 removebrac = ['[', ']', "'", '"']
@@ -179,6 +222,17 @@ class LoadDataset(torch.utils.data.Dataset):
 
             # self.y = np_y
             self.y = (np_y - np.mean(np_y, axis=0))/np.std(np_y, axis=0)
+
+            total_avg_y = np.mean(self.y)
+        elif args.dataset == 'houses':
+            np_x,np_y  = fetch_california_housing(return_X_y = True)
+            np_y = np.expand_dims(np_y, axis=1)
+
+            # self.X = np_x.astype(np.float32)
+            self.X = ((np_x - np.mean(np_x, axis=0)) / np.std(np_x, axis=0)).astype(np.float32)
+
+            # self.y = np_y.astype(np.float32)
+            self.y = ((np_y - np.mean(np_y, axis=0)) / np.std(np_y, axis=0)).astype(np.float32)
 
             total_avg_y = np.mean(self.y)
 
