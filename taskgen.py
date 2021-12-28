@@ -6,7 +6,7 @@ import shlex
 import time
 from datetime import datetime
 import sys
-sys.path.append('/Users/zafarzhonirismetov/PycharmProjects/Thesis_Dropout_Regression/taskgen_files')
+sys.path.append('taskgen_files')
 import args_utils, file_utils
 import torch
 from sklearn.model_selection import ParameterGrid
@@ -14,7 +14,7 @@ import subprocess
 import json
 import numpy as np
 
-parser = argparse.ArgumentParser(description="CalCOFI hypermarkets")
+parser = argparse.ArgumentParser(description="batch_thesis")
 parser.add_argument('-sequence_name', type=str, default='sequence')
 parser.add_argument('-run_name', type=str, default=str(time.time()))
 parser.add_argument(
