@@ -20,9 +20,9 @@ import file_utils
 import args_utils
 
 if torch.cuda.is_available():
-    device = "cuda"
+    DEVICE = "cuda"
 else:
-    device = "cpu"
+    DEVICE = "cpu"
 
 parser = argparse.ArgumentParser(description="hypermarkets")
 
@@ -263,7 +263,7 @@ class Model(torch.nn.Module):
 
 model = Model(layers_size=args.layers_size,
               drop_p=args.drop_p)
-model.to(device)
+model.to(DEVICE)
 
 if args.dropoutModule == 'advancedDropout':
     dp_params = []
@@ -342,8 +342,8 @@ for epoch in range(int(args.epoch)):
 
         for x, y in tqdm(dataloader, desc=mode):
 
-            x = x.to(device)
-            y = y.to(device)
+            x = x.to(DEVICE)
+            y = y.to(DEVICE)
             y_prim = model.forward(x)
             loss = torch.mean(torch.abs(y - y_prim))
 
