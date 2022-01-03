@@ -289,6 +289,15 @@ else:
         lr=float(args.lr)
     )
 
+def get_param_count(model):
+ params = list(model.parameters())
+ result = 0
+ for param in params:
+     count_param = np.prod(param.size())
+     result += count_param
+ return result
+
+size = get_param_count(model)
 
 
 name = ""

@@ -27,6 +27,10 @@ class Dropout(torch.nn.Module):
         self.bias_mu = Parameter(torch.Tensor([self.init_mu]))
         self.weight_sigma = Parameter(torch.rand([1, num // reduction]).mul(0.01))
         self.bias_sigma = Parameter(torch.Tensor([self.init_sigma]))
+        if torch.cuda.is_available():
+            self.DEVICE = "cuda"
+        else:
+            self.DEVICE = "cpu"
 
     def forward(self, input):
         if self.training:
@@ -36,7 +40,7 @@ class Dropout(torch.nn.Module):
             mu = F.linear(h, self.weight_mu, self.bias_mu).mean()
             sigma = F.softplus(F.linear(h, self.weight_sigma, self.bias_sigma)).mean()
             # mask
-            epsilon = mu + sigma * torch.randn([c, n])
+            epsilon = mu + sigma * torch.randn([c, n]).to(self.DEVICE)
             mask = torch.sigmoid(epsilon)
 
             out = input.mul(mask).div(torch.sigmoid(mu.data / torch.sqrt(1. + 3.14 / 8. * sigma.data ** 2.)))
