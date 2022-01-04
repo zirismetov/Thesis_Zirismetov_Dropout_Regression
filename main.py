@@ -71,42 +71,6 @@ parser.add_argument('-is_debug',
                     default=False,
                     type=lambda x: (str(x).lower() == 'true'))
 
-# parser.add_argument('-sequence_name',
-#                     default='calcofi_testing',
-#                     type=str)
-#
-# parser.add_argument('-dropoutModule',
-#                     default='noDrop',
-#                     type=str)
-#
-# parser.add_argument('-dataset',
-#                     default='artificial',
-#                     type=str)
-#
-# parser.add_argument('-layers_size',
-#                     default='1,64,64,1',
-#                     type=str)
-#
-# parser.add_argument('-drop_p',
-#                     default='0,0,0',
-#                     type=str)
-#
-# parser.add_argument('-test_size',
-#                     default=0.8,
-#                     type=float)
-#
-# parser.add_argument('-lr',
-#                     default=0.01,
-#                     type=float)
-#
-# parser.add_argument('-batch_size',
-#                     default=16,
-#                     type=int)
-#
-# parser.add_argument('-epoch',
-#                     default=2000,
-#                     type=int)
-#
 
 args, args_other = parser.parse_known_args()
 args = args_utils.ArgsUtils.add_other_args(args, args_other)
@@ -134,12 +98,9 @@ if args.dropoutModule != 'advancedDropout':
     args.drop_p = ''.join(args.drop_p)
 
 path_sequence = f'./results/{args.sequence_name_orig}/{args.sequence_name}'
-# args.run_name += ('-' + f'{args.dropoutModule}-' + datetime.utcnow().strftime(f'%y-%m-%d--%H-%M-%S'))
 args.run_name = args.sequence_name + ('-' + f'{args.dropoutModule}-' + datetime.utcnow().strftime(f'%y-%m-%d--%H-%M-%S'))
 
-# path_run = f'./{path_sequence}/{args.run_name}'
 path_overall_results = f'./results/{args.sequence_name_orig}'
-# file_utils.FileUtils.createDir(path_run)
 file_utils.FileUtils.createDir(path_sequence)
 file_utils.FileUtils.writeJSON(f'{path_sequence}/args.json', args.__dict__)
 csv_utils_2.CsvUtils2.create_global(path_sequence)
@@ -264,6 +225,17 @@ class Model(torch.nn.Module):
 model = Model(layers_size=args.layers_size,
               drop_p=args.drop_p)
 model.to(DEVICE)
+
+def get_param_count(model):
+    params = list(model.parameters())
+    result = 0
+    for param in params:
+        count_param = np.prod(param.size())
+        result += count_param
+    return result
+
+num_of_param = get_param_count(model)
+print(f'Number of parameters for {args.sequence_name}: {num_of_param}')
 
 if args.dropoutModule == 'advancedDropout':
     dp_params = []

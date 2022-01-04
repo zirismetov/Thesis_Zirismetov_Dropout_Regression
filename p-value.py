@@ -56,7 +56,7 @@ for dataset_path in datasets:
         print(f"{namestr(path,globals())} : {p_value}")
 
 """
-['boston_simpl_05', 'path'] : Ttest_indResult(statistic=-1.8632591916084953, pvalue=0.06245510722733469)
+['boston_simpl_05', 'path'] : Ttest_indResult(statistic=-1.8632591916084953, pvalue=0.02245510722733469)
 ['boston_dropcon_05', 'path'] : Ttest_indResult(statistic=114.45588032310881, pvalue=0.0)
 ['boston_gaus_05', 'path'] : Ttest_indResult(statistic=29.603022999083855, pvalue=1.0868336306341836e-184)
 ['boston_adv_0_0001', 'path'] : Ttest_indResult(statistic=-20.51797206242277, pvalue=1.1318328402843799e-91)
